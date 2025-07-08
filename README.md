@@ -1,94 +1,197 @@
-#GPU-Accelerated Video Converter (`cvrt_v5.sh`)
+# GPU-Accelerated Video Converter (`cvrt_v7.sh`)
 
-A powerful and flexible Bash script for batch-converting `.mkv` video files uping FFmpeg with GPU acceleration (VA-API).
+A powerful Bash script for batch-converting `.mkv` video files using FFmpeg with intelligent hardware acceleration detection and optimization.
 
-This script is designed to automate the process of re-encoding a video library to a more efficient codec like HEVC H(H.265). Its key feature is the intelligent handling of audio tracks and system resources for optimal performance.
+Automatically detects and utilizes the best available encoder: NVIDIA NVENC, Intel QSV, AMD VAAPI, or software fallback. Designed for efficient re-encoding of video libraries to HEVC (H.265) with smart audio handling and system resource optimization.
 
 ## Features
 
-    * **GPU Acceleration**: Uses VA-API for fast hardware-accelerated video encoding.
-    * **RAM disk Optimization**: Automatically uses a RAM disk (`/dev/shm`) for temporary files and conversion output if it exists and has sufficient space. This significantly reduces disk I/O and can speed up conversions on systems with slow hard drives.
-    * **Smart Audio Handling**:
-        * Keeps all existing non-5.1 audio tracks by default.
-        * If a file *only* contains 5.1 surround tracks, it converts them to high-quality 2.0 stereo AAC.
-    * **Batch Processing**: Converts all `.mkv` files in a specified directory.
-    ** **Metadata Preservation**: Keeps all original subtitle tracks and metadata.
-    * **In-Place Replacement**: Optional flag for replace original files with the converted versions.
-    * **Work Summary**: Provides a clear, concise summary of successful, failed, and skipped conversions.
-
----
+* **Intelligent Hardware Detection**: Automatically detects and scores available encoders (NVENC > QSV > VAAPI > Software)
+* **Multi-Platform GPU Support**: 
+  - NVIDIA NVENC (RTX/GTX series with AV1 support for RTX 40+)
+  - Intel QSV (integrated and Arc discrete GPUs)
+  - AMD VAAPI (APUs and discrete GPUs)
+* **Manual Encoder Selection**: Force specific encoders with command-line flags
+* **RAM Disk Optimization**: Uses `/dev/shm` for temporary files when available
+* **Smart Audio Processing**:
+  - Preserves existing non-5.1 audio tracks
+  - Converts 5.1 surround to high-quality stereo AAC when needed
+* **Hardware-Optimized Settings**: Encoder parameters automatically tuned per hardware type
+* **10-bit Video Support**: Handles HDR content when hardware supports it
+* **Progress Display**: Real-time FFmpeg progress bars
+* **Comprehensive Error Handling**: Automatic fallback chains and detailed debug output
 
 ## Prerequisites
 
-Before running this script, you must have the following software installed on your system:
+### Required Tools
+```bash
+# Core requirements (all distros)
+ffmpeg ffprobe jq
 
-1.  `**ffmpeg**: The core utility for video and audio conversion.
-2.  `**ffprobe**: A fool for analyzing media streams (usually included with `Ffmpeg`).
-3.  `**jq**: A COmmand-line JSON processor used to parse media information.
-4.  `**VA-API Drivers**: Hardware drivers for your GPU that support VA-API.
-
-You can typically install these on a Debian/Ubnuntu-based system with:
-
-````
-sudo apt-get update
-sudo apt-get install ffmpeg jq
+# Hardware acceleration libraries
+libva-utils  # For VAAPI support
 ```
 
-The VA-API drivers are often installed by default with your system's graphics drivers.
+### Distribution-Specific Setup
 
----
+**Ubuntu/Debian:**
+```bash
+sudo apt update && sudo apt install ffmpeg vainfo jq
+# AMD: sudo apt install mesa-va-drivers
+# Intel: sudo apt install intel-media-va-driver
+# NVIDIA: sudo apt install libnvidia-encode-470
+```
+
+**Fedora:**
+```bash
+sudo dnf install ffmpeg libva-utils jq mesa-va-drivers
+# Better AMD: sudo dnf install mesa-va-drivers-freeworld
+# Intel: sudo dnf install intel-media-driver
+# NVIDIA: sudo dnf install nvidia-driver
+```
+
+**openSUSE:**
+```bash
+sudo zypper install ffmpeg libva-utils jq libva-mesa-driver
+# Intel: sudo zypper install intel-media-driver
+# NVIDIA: sudo zypper install nvidia-video-G06
+```
+
+**Arch Linux:**
+```bash
+sudo pacman -S ffmpeg libva-utils jq libva-mesa-driver
+# Intel: sudo pacman -S intel-media-driver
+# NVIDIA: sudo pacman -S nvidia-utils
+```
+
+**Void Linux:**
+```bash
+sudo xbps-install -S ffmpeg libva-utils jq mesa-vaapi-drivers
+# Intel: sudo xbps-install -S intel-media-driver
+# NVIDIA: sudo xbps-install -S nvidia
+```
 
 ## Usage
 
-Make the script executable first:
-
-```
-chmod +x cvrt_v5.sh
-```
-
 ### Basic Syntax
-
-The script is run from the command line with the following syntax:
-
-```�/cvrt_v5.sh [--replace] [/path/to/your/videos]
+```bash
+./cvrt_v7.sh [OPTIONS] [/path/to/directory]
 ```
 
-* `--replace` ( or `-r`): An optional flag. If present, the original source file will be **permanently deleted** and replaced by the converted file upon successful conversion.
-* `[/path/to/your/videos]` An optional path to the directory containing your `.mkv` files. If omitted, the script will run in the current directory.
+### Command-Line Options
+- `--replace`, `-r`: Replace original files (⚠️ destructive)
+- `--debug`, `-d`: Enable verbose debug output
+- `--cpu`: Force software encoding (no artifacts, slower)
+- `--gpu`: Auto-select best GPU encoder
+- `--nvenc`: Force NVIDIA NVENC
+- `--vaapi`: Force AMD/Intel VAAPI  
+- `--qsv`: Force Intel Quick Sync Video
 
 ### Examples
 
-**1. Standard Conversion (Safe Mode)**
-
-This will process all `.mkv` files in `/mnt/media/movies` and create new files with a `-converted.mkv` suffix.
-
-```
-./cvrt_v5.sh /mnt/media/movies
+**Standard conversion (safe):**
+```bash
+./cvrt_v7.sh /mnt/media/movies
 ```
 
-**2. In-Place Replacement**
-
-Ithis will process all `.mkv` files in the current directory and **overwrite** the original files.
-
-````
-./cvrt_v5.sh --replace .
+**In-place replacement:**
+```bash
+./cvrt_v7.sh --replace .
 ```
 
-> ⊠ **Warning:** Use the `--replace` flag with caution. There is no undo. It is highly recommended to run a test first before enabling this on your library.
+**Force software encoding (artifact-free):**
+```bash
+./cvrt_v7.sh --cpu --replace /path/to/videos
+```
 
----
+**Debug hardware detection:**
+```bash
+./cvrt_v7.sh --debug --vaapi .
+```
 
 ## Configuration
 
-Pou can easily modify the script's behavior by changing the variables at the top of the file.
+Edit these variables at the top of the script:
 
-* `QUALITY_PARAM=24`
-    * Controls the video quality. Lower values mean better quality; higher values mean smaller files. A reasonable range is `20` to `28`.
+```bash
+QUALITY_PARAM=24          # CRF/QP value (20-28 range)
+STEREO_BITRATE="192k"     # Audio bitrate for 5.1→stereo
+```
 
-*`STEREO_BITRATE="192k"`
-    * Sets the audio bitrate for the 5.1 to stereo AAC conversion.
+### Quality Settings
+- `20`: Very high quality, large files
+- `24`: Balanced (default)
+- `28`: High compression, smaller files
 
-*`VAAPR_DEVICE="/dev/dri/renderD128"`
-    * Specifies which GPU to use. Run `ls /dev/dri` to see available devices.
+## Hardware-Specific Notes
 
-The script's use of a RAM disk (`/dev/shm`) is fully automatic and does not require configuration.
+### AMD APUs/GPUs (VAAPI)
+- May produce artifacts with some drivers
+- Use `--cpu` flag if quality issues occur
+- Fedora: Install `mesa-va-drivers-freeworld` for better support
+
+### Intel iGPUs (QSV)
+- Generally reliable quality
+- Good performance/quality balance
+- Supports 10-bit on newer generations
+
+### NVIDIA GPUs (NVENC)
+- Best quality and speed
+- RTX 40+ series supports AV1 encoding
+- Requires proper driver installation
+
+## Troubleshooting
+
+**No hardware acceleration detected:**
+```bash
+# Check VAAPI support
+vainfo --display drm --device /dev/dri/renderD128
+
+# List available devices
+ls /dev/dri/
+
+# Run with debug
+./cvrt_v7.sh --debug .
+```
+
+**Video artifacts (AMD VAAPI):**
+```bash
+# Force software encoding
+./cvrt_v7.sh --cpu .
+```
+
+**Permission issues:**
+```bash
+# Add user to video group
+sudo usermod -a -G video $USER
+# Log out and back in
+```
+
+## Output
+
+The script provides concise progress updates:
+```
+🔍 Detecting hardware capabilities...
+📊 AMD 12-core | Encoder: VAAPI
+   Fallback: SOFTWARE
+
+🎬 Processing 3 .mkv file(s) in: /media/videos
+
+📹 movie1.mkv
+   hevc 1920x1080 (10bit) | 2 audio tracks
+   🔄 Encoding with VAAPI...
+   ✅ Created: movie1-converted.mkv
+
+📊 Results: ✅ 2 successful | ❌ 0 failed | ⏭️ 1 skipped
+```
+
+## Safety Features
+
+- **Non-destructive by default**: Creates `-converted.mkv` files
+- **Automatic fallbacks**: GPU encoding fails → software encoding
+- **RAM disk size checking**: Prevents system hangs
+- **Comprehensive validation**: Checks tools and hardware before processing
+
+---
+
+**⚠️ Important:** Always test with a few files before batch processing your entire library. Use `--replace` with caution as it permanently overwrites original files.

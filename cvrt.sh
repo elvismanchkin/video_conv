@@ -1,16 +1,17 @@
 #!/bin/bash
 
 # ==============================================================================
-# GPU-Accelerated Video Converter (v4)
+# GPU-Accelerated Video Converter (v5)
 #
 # This script iterates through all .mkv files in a target directory, re-encodes
 # the video using VA-API, and handles audio tracks.
 #
-# BUGFIX in v4:
-# - Correctly added the 'ffmpeg' command to the execution array, fixing the
-#   "-vaapi_device: command not found" error.
+# NEW in v5:
+# - Automatically uses a RAM disk (/dev/shm) for temporary files and the
+#   primary conversion artifact to reduce disk I/O and speed up the process.
+#   This is only done if /dev/shm exists and has sufficient space for the file.
 #
-# USAGE: ./cvrt_v4.sh [--replace] [/path/to/directory]
+# USAGE: ./cvrt_v5.sh [--replace] [/path/to/directory]
 #
 # REQUIREMENTS: ffmpeg, ffprobe, jq, and VA-API drivers must be installed.
 # ==============================================================================
@@ -24,26 +25,32 @@ VAAPI_DEVICE="/dev/dri/renderD128"
 REPLACE_SOURCE=false
 WORKDIR="."
 
-# Simple argument parsing for the --replace flag and optional directory
 if [[ "$1" == "-r" || "$1" == "--replace" ]]; then
     REPLACE_SOURCE=true
     echo "⚠️ Replace mode enabled. Source files will be overwritten on success."
     shift # Remove the flag from arguments
 fi
 
-# Use the next argument as the working directory, if it exists
 if [ -n "$1" ]; then
     WORKDIR="$1"
 fi
 
-# Check if the provided path is a valid directory
 if [ ! -d "$WORKDIR" ]; then
     echo "Error: Directory '$WORKDIR' not found."
     exit 1
 fi
 
-# Change to the target directory. Exit if the directory change fails.
 cd "$WORKDIR" || { echo "Error: Could not change to directory '$WORKDIR'."; exit 1; }
+
+# --- Check for RAM Disk (/dev/shm) ---
+SHM_PATH="/dev/shm"
+CAN_USE_SHM=false
+if [ -d "$SHM_PATH" ]; then
+    CAN_USE_SHM=true
+    echo "ℹ️ RAM Disk ($SHM_PATH) is available for use."
+else
+    echo "ℹ️ RAM Disk ($SHM_PATH) not found, will use standard disk for temp files."
+fi
 
 # --- Summary Counters ---
 success_count=0
@@ -57,23 +64,44 @@ echo "Found $total_files .mkv file(s) to process."
 
 # --- Main Processing Loop ---
 for file in $file_list; do
-    # Check if the file exists to avoid errors with empty directories
     [ -f "$file" ] || continue
-
     echo "--- Processing file: $file ---"
 
-    # If replacing, use a temp name; otherwise, use the "-converted" suffix.
+    # --- Determine Paths ---
+    final_destination_path=""
     if [ "$REPLACE_SOURCE" = true ]; then
-        output_file="${file%.*}-TEMP-$$.mkv"
+        final_destination_path="$file"
     else
-        output_file="${file%.*}-converted.mkv"
+        final_destination_path="${file%.*}-converted.mkv"
     fi
 
-    # Count how many audio tracks are NOT 6-channel (5.1)
+    # Determine the temporary path for FFmpeg's output
+    ffmpeg_output_path=""
+    USE_SHM_FOR_FILE=false
+    if [ "$CAN_USE_SHM" = true ]; then
+        available_kb=$(df -k "$SHM_PATH" | awk 'NR==2 {print $4}')
+        required_kb=$(du -k "$file" | cut -f1) # Estimate output size <= input size
+        if (( available_kb > required_kb )); then
+            USE_SHM_FOR_FILE=true
+            ffmpeg_output_path="$SHM_PATH/conv-temp-$$_$(basename "$file")"
+            echo "👍 Using RAM disk for temporary output to speed up conversion."
+        else
+            echo "⚠️ Not enough space on RAM disk for '$file'. Using standard disk."
+        fi
+    fi
+
+    if [ "$USE_SHM_FOR_FILE" = false ]; then
+        if [ "$REPLACE_SOURCE" = true ]; then
+            ffmpeg_output_path="${file%.*}-TEMP-$$.mkv"
+        else
+            ffmpeg_output_path="$final_destination_path"
+        fi
+    fi
+
+    # --- Audio Stream Analysis ---
     valid_audio_count=$(ffprobe -v quiet -print_format json -show_streams "$file" | \
                         jq -r '[.streams[] | select(.codec_type=="audio" and .channels!=6)] | length')
-
-    # Default ffmpeg command arguments
+    
     ffmpeg_cmd=()
     conversion_status=1 # 1 for fail, 0 for success
 
@@ -92,7 +120,15 @@ for file in $file_list; do
             continue
         fi
 
-        TEMP_DIR=$(mktemp -d)
+        # Use /dev/shm for audio temp files if available
+        TEMP_DIR_BASE=""
+        [ "$USE_SHM_FOR_FILE" = true ] && TEMP_DIR_BASE="$SHM_PATH"
+        
+        if [ -n "$TEMP_DIR_BASE" ]; then
+            TEMP_DIR=$(mktemp -d -p "$TEMP_DIR_BASE")
+        else
+            TEMP_DIR=$(mktemp -d)
+        fi
         trap 'rm -rf -- "$TEMP_DIR"' EXIT
 
         ffmpeg_inputs=("-i" "$file")
@@ -114,22 +150,17 @@ for file in $file_list; do
         if [ $audio_input_counter -eq 1 ]; then
             echo "Error: All audio conversions failed for '$file'. Skipping."
             ((failed_count++))
-            trap - EXIT
-            rm -rf -- "$TEMP_DIR"
+            trap - EXIT; rm -rf -- "$TEMP_DIR"
             continue
         fi
         
         echo "Combining video, subtitles, and new stereo audio..."
-        # FIXED: Added 'ffmpeg' to the start of the command array
-        ffmpeg_cmd=(ffmpeg -vaapi_device "$VAAPI_DEVICE" "${ffmpeg_inputs[@]}" "${map_args[@]}" -map_metadata 0 -vf 'format=nv12,hwupload' -c:v hevc_vaapi -qp "$QUALITY_PARAM" -c:a copy -c:s copy -y "$output_file")
+        ffmpeg_cmd=(ffmpeg -vaapi_device "$VAAPI_DEVICE" "${ffmpeg_inputs[@]}" "${map_args[@]}" -map_metadata 0 -vf 'format=nv12,hwupload' -c:v hevc_vaapi -qp "$QUALITY_PARAM" -c:a copy -c:s copy -y "$ffmpeg_output_path")
         
-        # Run ffmpeg
         "${ffmpeg_cmd[@]}"
         conversion_status=$?
         
-        # Clean up temp audio files
-        trap - EXIT
-        rm -rf -- "$TEMP_DIR"
+        trap - EXIT; rm -rf -- "$TEMP_DIR"
 
     else
         # --- Keep Existing Non-5.1 Tracks ---
@@ -142,10 +173,8 @@ for file in $file_list; do
         done
 
         echo "Starting conversion (keeping original audio)..."
-        # FIXED: Added 'ffmpeg' to the start of the command array
-        ffmpeg_cmd=(ffmpeg -vaapi_device "$VAAPI_DEVICE" -i "$file" "${map_args[@]}" -vf 'format=nv12,hwupload' -c:v hevc_vaapi -qp "$QUALITY_PARAM" -c:a copy -c:s copy -y "$output_file")
+        ffmpeg_cmd=(ffmpeg -vaapi_device "$VAAPI_DEVICE" -i "$file" "${map_args[@]}" -vf 'format=nv12,hwupload' -c:v hevc_vaapi -qp "$QUALITY_PARAM" -c:a copy -c:s copy -y "$ffmpeg_output_path")
         
-        # Run ffmpeg
         "${ffmpeg_cmd[@]}"
         conversion_status=$?
     fi
@@ -154,23 +183,28 @@ for file in $file_list; do
     # Finalization and Cleanup
     # ==========================================================================
     if [ $conversion_status -eq 0 ]; then
-        if [ "$REPLACE_SOURCE" = true ]; then
-            # Move the temporary file to replace the original
-            mv -f "$output_file" "$file"
+        # If output was written to a temporary location, move it to the final destination
+        if [ "$ffmpeg_output_path" != "$final_destination_path" ]; then
+            mv -f "$ffmpeg_output_path" "$final_destination_path"
             if [ $? -eq 0 ]; then
-                echo "✅ Success. Source file replaced."
+                if [ "$REPLACE_SOURCE" = true ]; then
+                    echo "✅ Success. Source file replaced."
+                else
+                    echo "✅ Successfully created: $final_destination_path"
+                fi
                 ((success_count++))
             else
-                echo "❌ Error: Failed to replace source with '$output_file'."
+                echo "❌ Error: Failed to move temporary file to '$final_destination_path'."
                 ((failed_count++))
             fi
         else
-            echo "✅ Successfully created: $output_file"
+            # File was written directly to its final destination
+            echo "✅ Successfully created: $final_destination_path"
             ((success_count++))
         fi
     else
         echo "❌ Error: FFmpeg command failed for '$file'."
-        rm -f "$output_file" # Clean up failed temp/output file
+        rm -f "$ffmpeg_output_path" # Clean up failed temp/output file
         ((failed_count++))
     fi
     echo "-------------------------------------"

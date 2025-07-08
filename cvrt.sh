@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ==============================================================================
-# Self-Contained GPU Video Converter (v7.1)
+# Self-Contained GPU Video Converter (v11)
 #
 # FEATURES:
 # - Enhanced hardware detection with better fallback chains
@@ -10,7 +10,7 @@
 # - Better AMD APU and Intel iGPU detection
 # - Automatic quality optimization per hardware type
 #
-# USAGE: ./cvrt_v7.sh [--replace] [--debug] [/path/to/directory]
+# USAGE: ./cvrt_v11.sh [--replace] [--debug] [/path/to/directory]
 #
 # SETUP REQUIREMENTS:
 #
@@ -405,8 +405,8 @@ get_encoder_args() {
                 encoder_args_ref+=("-vf" "format=nv12,hwupload" "-profile:v" "main")
             fi
             
-            # Quality parameter
-            encoder_args_ref+=("-qp" "$QUALITY_PARAM")
+            # Quality parameter and keyframes
+            encoder_args_ref+=("-qp" "$QUALITY_PARAM" "-g" "250" "-keyint_min" "25")
             
             # Hardware-specific optimizations
             if [ "${HW_SUPPORT[AMD_DISCRETE]}" = "true" ] || [ "${HW_SUPPORT[AMD_INTEGRATED]}" = "true" ]; then
@@ -609,7 +609,7 @@ for file in $file_list; do
         debug_echo "Encoder: ${encoder_args[*]}"
         
         ffmpeg "${ffmpeg_inputs[@]}" "${map_args[@]}" -map_metadata 0 \
-               "${encoder_args[@]}" -c:a copy -c:s copy -y "$ffmpeg_output_path" 2>/dev/null
+               "${encoder_args[@]}" -c:a copy -c:s copy -y "$ffmpeg_output_path"
         conversion_status=$?
         
         trap - EXIT
@@ -628,7 +628,7 @@ for file in $file_list; do
         done
 
         ffmpeg -i "$file" "${map_args[@]}" "${encoder_args[@]}" \
-               -c:a copy -c:s copy -y "$ffmpeg_output_path" 2>/dev/null
+               -c:a copy -c:s copy -y "$ffmpeg_output_path"
         conversion_status=$?
     fi
 
@@ -668,14 +668,14 @@ for file in $file_list; do
             done
 
             ffmpeg "${ffmpeg_inputs[@]}" "${map_args[@]}" -map_metadata 0 \
-                   "${fallback_args[@]}" -c:a copy -c:s copy -y "$ffmpeg_output_path" 2>/dev/null
+                   "${fallback_args[@]}" -c:a copy -c:s copy -y "$ffmpeg_output_path"
             conversion_status=$?
             
             trap - EXIT
             rm -rf -- "$TEMP_DIR"
         else
             ffmpeg -i "$file" "${map_args[@]}" "${fallback_args[@]}" \
-                   -c:a copy -c:s copy -y "$ffmpeg_output_path" 2>/dev/null
+                   -c:a copy -c:s copy -y "$ffmpeg_output_path"
             conversion_status=$?
         fi
     fi

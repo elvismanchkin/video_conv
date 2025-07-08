@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ==============================================================================
-# Self-Contained GPU Video Converter (v9.0)
+# Self-Contained GPU Video Converter (v7.1)
 #
 # FEATURES:
 # - Enhanced hardware detection with better fallback chains
@@ -11,6 +11,36 @@
 # - Automatic quality optimization per hardware type
 #
 # USAGE: ./cvrt_v7.sh [--replace] [--debug] [/path/to/directory]
+#
+# SETUP REQUIREMENTS:
+#
+# Ubuntu/Debian:
+#   sudo apt update && sudo apt install ffmpeg vainfo jq
+#   # For AMD: sudo apt install mesa-va-drivers
+#   # For Intel: sudo apt install intel-media-va-driver
+#   # For NVIDIA: sudo apt install libnvidia-encode-470 (or current driver version)
+#
+# Fedora:
+#   sudo dnf install ffmpeg libva-utils jq mesa-va-drivers
+#   # For better AMD support: sudo dnf install mesa-va-drivers-freeworld
+#   # For Intel: sudo dnf install intel-media-driver
+#   # For NVIDIA: Enable RPM Fusion, then: sudo dnf install nvidia-driver
+#
+# openSUSE:
+#   sudo zypper install ffmpeg libva-utils jq libva-mesa-driver
+#   # For Intel: sudo zypper install intel-media-driver
+#   # For NVIDIA: sudo zypper install nvidia-video-G06 (or G05 for older cards)
+#
+# Arch Linux:
+#   sudo pacman -S ffmpeg libva-utils jq libva-mesa-driver
+#   # For Intel: sudo pacman -S intel-media-driver
+#   # For NVIDIA: sudo pacman -S nvidia-utils
+#
+# Void Linux:
+#   sudo xbps-install -S ffmpeg libva-utils jq mesa-vaapi-drivers
+#   # For Intel: sudo xbps-install -S intel-media-driver
+#   # For NVIDIA: sudo xbps-install -S nvidia
+#
 # ==============================================================================
 
 # --- Configuration ---
@@ -126,14 +156,18 @@ detect_vaapi_support() {
                 VAAPI_INFO=$(vainfo --display drm --device "$device" 2>/dev/null)
                 if [ $? -eq 0 ]; then
                     HW_DEVICES["VAAPI"]="$device"
+                    debug_echo "VAAPI info for $device:"
+                    debug_echo "$VAAPI_INFO"
                     
                     # Check encoding capabilities
-                    if echo "$VAAPI_INFO" | grep -qi "VAEntrypointEncSlice.*HEVC\|VAEntrypointEncSliceLP.*HEVC"; then
+                    if echo "$VAAPI_INFO" | grep -q "VAProfileHEVCMain.*VAEntrypointEncSlice"; then
                         ENCODER_CAPS["VAAPI_HEVC"]="true"
+                        debug_echo "VAAPI HEVC encoding detected"
                         
                         # 10-bit support check
-                        if echo "$VAAPI_INFO" | grep -qi "VAProfileHEVCMain10"; then
+                        if echo "$VAAPI_INFO" | grep -q "VAProfileHEVCMain10.*VAEntrypointEncSlice"; then
                             ENCODER_CAPS["VAAPI_HEVC_10BIT"]="true"
+                            debug_echo "VAAPI HEVC 10-bit encoding detected"
                         fi
                     fi
                     

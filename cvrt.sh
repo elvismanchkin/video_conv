@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# ==============================================================================
-# GPU-Accelerated Video Converter (v5)
+# ======================================================================
+# GPU-Accelerated Video Converter
 #
 # This script iterates through all .mkv files in a target directory, re-encodes
 # the video using VA-API, and handles audio tracks.
@@ -11,10 +11,10 @@
 #   primary conversion artifact to reduce disk I/O and speed up the process.
 #   This is only done if /dev/shm exists and has sufficient space for the file.
 #
-# USAGE: ./cvrt_v5.sh [--replace] [/path/to/directory]
+# USAGE: ./cvrt.sh [--replace] [/path/to/directory]
 #
 # REQUIREMENTS: ffmpeg, ffprobe, jq, and VA-API drivers must be installed.
-# ==============================================================================
+# ======================================================================
 
 # --- Configuration ---
 QUALITY_PARAM=24
@@ -27,7 +27,7 @@ WORKDIR="."
 
 if [[ "$1" == "-r" || "$1" == "--replace" ]]; then
     REPLACE_SOURCE=true
-    echo "⚠️ Replace mode enabled. Source files will be overwritten on success."
+    echo "[!] Replace mode enabled. Source files will be overwritten on success."
     shift # Remove the flag from arguments
 fi
 
@@ -47,9 +47,9 @@ SHM_PATH="/dev/shm"
 CAN_USE_SHM=false
 if [ -d "$SHM_PATH" ]; then
     CAN_USE_SHM=true
-    echo "ℹ️ RAM Disk ($SHM_PATH) is available for use."
+    echo "[i] RAM Disk ($SHM_PATH) is available for use."
 else
-    echo "ℹ️ RAM Disk ($SHM_PATH) not found, will use standard disk for temp files."
+    echo "[i] RAM Disk ($SHM_PATH) not found, will use standard disk for temp files."
 fi
 
 # --- Summary Counters ---
@@ -59,7 +59,7 @@ failed_count=0
 file_list=$(ls *.mkv 2> /dev/null)
 total_files=$(echo "$file_list" | wc -w)
 
-echo "--- 🎬 Starting batch conversion in: $(pwd) ---"
+echo "--- [*] Starting batch conversion in: $(pwd) ---"
 echo "Found $total_files .mkv file(s) to process."
 
 # --- Main Processing Loop ---
@@ -84,9 +84,9 @@ for file in $file_list; do
         if (( available_kb > required_kb )); then
             USE_SHM_FOR_FILE=true
             ffmpeg_output_path="$SHM_PATH/conv-temp-$$_$(basename "$file")"
-            echo "👍 Using RAM disk for temporary output to speed up conversion."
+            echo "[+] Using RAM disk for temporary output to speed up conversion."
         else
-            echo "⚠️ Not enough space on RAM disk for '$file'. Using standard disk."
+            echo "[!] Not enough space on RAM disk for '$file'. Using standard disk."
         fi
     fi
 
@@ -105,9 +105,9 @@ for file in $file_list; do
     ffmpeg_cmd=()
     conversion_status=1 # 1 for fail, 0 for success
 
-    # ==========================================================================
+    # ======================================================================
     # Audio Processing Logic
-    # ==========================================================================
+    # ======================================================================
     if [ "$valid_audio_count" -eq 0 ]; then
         # --- 5.1 to 2.0 Conversion Logic ---
         echo "No non-5.1 audio found. Converting 5.1 tracks to stereo."
@@ -179,31 +179,31 @@ for file in $file_list; do
         conversion_status=$?
     fi
 
-    # ==========================================================================
+    # ======================================================================
     # Finalization and Cleanup
-    # ==========================================================================
+    # ======================================================================
     if [ $conversion_status -eq 0 ]; then
         # If output was written to a temporary location, move it to the final destination
         if [ "$ffmpeg_output_path" != "$final_destination_path" ]; then
             mv -f "$ffmpeg_output_path" "$final_destination_path"
             if [ $? -eq 0 ]; then
                 if [ "$REPLACE_SOURCE" = true ]; then
-                    echo "✅ Success. Source file replaced."
+                    echo "[OK] Success. Source file replaced."
                 else
-                    echo "✅ Successfully created: $final_destination_path"
+                    echo "[OK] Successfully created: $final_destination_path"
                 fi
                 ((success_count++))
             else
-                echo "❌ Error: Failed to move temporary file to '$final_destination_path'."
+                echo "[ERR] Error: Failed to move temporary file to '$final_destination_path'."
                 ((failed_count++))
             fi
         else
             # File was written directly to its final destination
-            echo "✅ Successfully created: $final_destination_path"
+            echo "[OK] Successfully created: $final_destination_path"
             ((success_count++))
         fi
     else
-        echo "❌ Error: FFmpeg command failed for '$file'."
+        echo "[ERR] Error: FFmpeg command failed for '$file'."
         rm -f "$ffmpeg_output_path" # Clean up failed temp/output file
         ((failed_count++))
     fi
@@ -211,9 +211,9 @@ for file in $file_list; do
 done
 
 # --- Final Summary ---
-echo "--- ✨ All files processed. ---"
+echo "--- [*] All files processed. ---"
 echo "Summary:"
-echo "  - ✅ Successful: $success_count / $total_files"
-echo "  - ❌ Failed:      $failed_count / $total_files"
-echo "  - ⏭️ Skipped:     $skipped_count / $total_files"
+echo "  - [OK] Successful: $success_count / $total_files"
+echo "  - [ERR] Failed:      $failed_count / $total_files"
+echo "  - [SKIP] Skipped:     $skipped_count / $total_files"
 echo "-------------------------------------"

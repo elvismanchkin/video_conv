@@ -1,14 +1,14 @@
-# GPU-Accelerated Video Converter (`cvrt_v7.sh`)
+# GPU-Accelerated Video Converter
 
-A powerful Bash script for batch-converting `.mkv` video files using FFmpeg with intelligent hardware acceleration detection and optimization.
+A Bash script for batch-converting `.mkv` video files using FFmpeg with automatic hardware acceleration detection and optimization.
 
-Automatically detects and utilizes the best available encoder: NVIDIA NVENC, Intel QSV, AMD VAAPI, or software fallback. Designed for efficient re-encoding of video libraries to HEVC (H.265) with smart audio handling and system resource optimization.
+Detects and uses the best available encoder: NVIDIA NVENC, Intel QSV, AMD VAAPI, or software fallback. Designed for efficient re-encoding of video libraries to HEVC (H.265) with smart audio handling and system resource optimization.
 
 ## Features
 
-* **Intelligent Hardware Detection**: Automatically detects and scores available encoders (NVENC > QSV > VAAPI > Software)
+* **Intelligent Hardware Detection**: Detects and scores available encoders (NVENC > QSV > VAAPI > Software)
 * **Multi-Platform GPU Support**: 
-  - NVIDIA NVENC (RTX/GTX series with AV1 support for RTX 40+)
+  - NVIDIA NVENC (RTX/GTX series, AV1 support on newer cards)
   - Intel QSV (integrated and Arc discrete GPUs)
   - AMD VAAPI (APUs and discrete GPUs)
 * **Manual Encoder Selection**: Force specific encoders with command-line flags
@@ -16,7 +16,7 @@ Automatically detects and utilizes the best available encoder: NVIDIA NVENC, Int
 * **Smart Audio Processing**:
   - Preserves existing non-5.1 audio tracks
   - Converts 5.1 surround to high-quality stereo AAC when needed
-* **Hardware-Optimized Settings**: Encoder parameters automatically tuned per hardware type
+* **Hardware-Optimized Settings**: Encoder parameters tuned per hardware type
 * **10-bit Video Support**: Handles HDR content when hardware supports it
 * **Progress Display**: Real-time FFmpeg progress bars
 * **Comprehensive Error Handling**: Automatic fallback chains and detailed debug output
@@ -25,11 +25,10 @@ Automatically detects and utilizes the best available encoder: NVIDIA NVENC, Int
 
 ### Required Tools
 ```bash
-# Core requirements (all distros)
 ffmpeg ffprobe jq
 
-# Hardware acceleration libraries
-libva-utils  # For VAAPI support
+# For VAAPI support
+libva-utils
 ```
 
 ### Distribution-Specific Setup
@@ -39,13 +38,13 @@ libva-utils  # For VAAPI support
 sudo apt update && sudo apt install ffmpeg vainfo jq
 # AMD: sudo apt install mesa-va-drivers
 # Intel: sudo apt install intel-media-va-driver
-# NVIDIA: sudo apt install libnvidia-encode-470
+# NVIDIA: sudo apt install libnvidia-encode
 ```
 
 **Fedora:**
 ```bash
 sudo dnf install ffmpeg libva-utils jq mesa-va-drivers
-# Better AMD: sudo dnf install mesa-va-drivers-freeworld
+# AMD: sudo dnf install mesa-va-drivers-freeworld
 # Intel: sudo dnf install intel-media-driver
 # NVIDIA: sudo dnf install nvidia-driver
 ```
@@ -75,7 +74,7 @@ sudo xbps-install -S ffmpeg libva-utils jq mesa-vaapi-drivers
 
 ### Basic Syntax
 ```bash
-./cvrt_v7.sh [OPTIONS] [/path/to/directory]
+./cvrt.sh [OPTIONS] [/path/to/directory]
 ```
 
 ### Command-Line Options
@@ -91,22 +90,22 @@ sudo xbps-install -S ffmpeg libva-utils jq mesa-vaapi-drivers
 
 **Standard conversion (safe):**
 ```bash
-./cvrt_v7.sh /mnt/media/movies
+./cvrt.sh /mnt/media/movies
 ```
 
 **In-place replacement:**
 ```bash
-./cvrt_v7.sh --replace .
+./cvrt.sh --replace .
 ```
 
-**Force software encoding (artifact-free):**
+**Force software encoding:**
 ```bash
-./cvrt_v7.sh --cpu --replace /path/to/videos
+./cvrt.sh --cpu --replace /path/to/videos
 ```
 
 **Debug hardware detection:**
 ```bash
-./cvrt_v7.sh --debug --vaapi .
+./cvrt.sh --debug --vaapi .
 ```
 
 ## Configuration
@@ -137,7 +136,7 @@ STEREO_BITRATE="192k"     # Audio bitrate for 5.1→stereo
 
 ### NVIDIA GPUs (NVENC)
 - Best quality and speed
-- RTX 40+ series supports AV1 encoding
+- Newer series support AV1 encoding
 - Requires proper driver installation
 
 ## Troubleshooting
@@ -151,13 +150,13 @@ vainfo --display drm --device /dev/dri/renderD128
 ls /dev/dri/
 
 # Run with debug
-./cvrt_v7.sh --debug .
+./cvrt.sh --debug .
 ```
 
 **Video artifacts (AMD VAAPI):**
 ```bash
 # Force software encoding
-./cvrt_v7.sh --cpu .
+./cvrt.sh --cpu .
 ```
 
 **Permission issues:**
@@ -171,18 +170,18 @@ sudo usermod -a -G video $USER
 
 The script provides concise progress updates:
 ```
-🔍 Detecting hardware capabilities...
-📊 AMD 12-core | Encoder: VAAPI
+Detecting hardware capabilities...
+AMD 12-core | Encoder: VAAPI
    Fallback: SOFTWARE
 
-🎬 Processing 3 .mkv file(s) in: /media/videos
+Processing 3 .mkv file(s) in: /media/videos
 
-📹 movie1.mkv
+movie1.mkv
    hevc 1920x1080 (10bit) | 2 audio tracks
-   🔄 Encoding with VAAPI...
-   ✅ Created: movie1-converted.mkv
+   Encoding with VAAPI...
+   Created: movie1-converted.mkv
 
-📊 Results: ✅ 2 successful | ❌ 0 failed | ⏭️ 1 skipped
+Results: 2 successful | 0 failed | 1 skipped
 ```
 
 ## Safety Features

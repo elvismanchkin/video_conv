@@ -1,20 +1,16 @@
 #!/bin/bash
 
 # ==============================================================================
-# GPU-Accelerated Video Converter (v3)
+# GPU-Accelerated Video Converter (v4)
 #
 # This script iterates through all .mkv files in a target directory, re-encodes
 # the video using VA-API, and handles audio tracks.
 #
-# NEW FEATURES:
-# - Optional source file replacement with `--replace`.
-# - A summary of completed work is displayed at the end.
+# BUGFIX in v4:
+# - Correctly added the 'ffmpeg' command to the execution array, fixing the
+#   "-vaapi_device: command not found" error.
 #
-# AUDIO LOGIC:
-# It attempts to keep all non-5.1 audio tracks. If a file ONLY has 5.1
-# audio, the script will convert each 5.1 track to a 2.0 stereo AAC track.
-#
-# USAGE: ./cvrt_v3.sh [--replace] [/path/to/directory]
+# USAGE: ./cvrt_v4.sh [--replace] [/path/to/directory]
 #
 # REQUIREMENTS: ffmpeg, ffprobe, jq, and VA-API drivers must be installed.
 # ==============================================================================
@@ -79,6 +75,7 @@ for file in $file_list; do
 
     # Default ffmpeg command arguments
     ffmpeg_cmd=()
+    conversion_status=1 # 1 for fail, 0 for success
 
     # ==========================================================================
     # Audio Processing Logic
@@ -123,11 +120,13 @@ for file in $file_list; do
         fi
         
         echo "Combining video, subtitles, and new stereo audio..."
-        ffmpeg_cmd=(-vaapi_device "$VAAPI_DEVICE" "${ffmpeg_inputs[@]}" "${map_args[@]}" -map_metadata 0 -vf 'format=nv12,hwupload' -c:v hevc_vaapi -qp "$QUALITY_PARAM" -c:a copy -c:s copy "$output_file")
+        # FIXED: Added 'ffmpeg' to the start of the command array
+        ffmpeg_cmd=(ffmpeg -vaapi_device "$VAAPI_DEVICE" "${ffmpeg_inputs[@]}" "${map_args[@]}" -map_metadata 0 -vf 'format=nv12,hwupload' -c:v hevc_vaapi -qp "$QUALITY_PARAM" -c:a copy -c:s copy -y "$output_file")
         
         # Run ffmpeg
         "${ffmpeg_cmd[@]}"
-
+        conversion_status=$?
+        
         # Clean up temp audio files
         trap - EXIT
         rm -rf -- "$TEMP_DIR"
@@ -143,16 +142,18 @@ for file in $file_list; do
         done
 
         echo "Starting conversion (keeping original audio)..."
-        ffmpeg_cmd=(-vaapi_device "$VAAPI_DEVICE" -i "$file" "${map_args[@]}" -vf 'format=nv12,hwupload' -c:v hevc_vaapi -qp "$QUALITY_PARAM" -c:a copy -c:s copy "$output_file")
+        # FIXED: Added 'ffmpeg' to the start of the command array
+        ffmpeg_cmd=(ffmpeg -vaapi_device "$VAAPI_DEVICE" -i "$file" "${map_args[@]}" -vf 'format=nv12,hwupload' -c:v hevc_vaapi -qp "$QUALITY_PARAM" -c:a copy -c:s copy -y "$output_file")
         
         # Run ffmpeg
         "${ffmpeg_cmd[@]}"
+        conversion_status=$?
     fi
 
     # ==========================================================================
     # Finalization and Cleanup
     # ==========================================================================
-    if [ $? -eq 0 ]; then
+    if [ $conversion_status -eq 0 ]; then
         if [ "$REPLACE_SOURCE" = true ]; then
             # Move the temporary file to replace the original
             mv -f "$output_file" "$file"

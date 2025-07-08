@@ -3,7 +3,8 @@
 # ==============================================================================
 # GPU-Accelerated Video Converter (with 5.1 to Stereo Fallback)
 #
-# This script iterates through all .mkv files in the current directory.
+# This script iterates through all .mkv files in the specified directory
+# (or the current directory if none is provided).
 #
 # It attempts to keep all non-5.1 audio tracks. If a file ONLY has 5.1
 # audio, the script will convert each 5.1 track to a 2.0 stereo AAC track
@@ -12,6 +13,8 @@
 # Original video, all subtitles, and the appropriate audio tracks (either
 # the original non-5.1 or the converted stereo) are kept. The video is
 # re-encoded using GPU acceleration.
+#
+# USAGE: ./cvrt_v2.sh [path/to/directory]
 #
 # REQUIREMENTS: ffmpeg, ffprobe, jq, and VA-API drivers must be installed.
 # ==============================================================================
@@ -30,6 +33,20 @@ STEREO_BITRATE="192k"
 VAAPI_DEVICE="/dev/dri/renderD128"
 
 # --- Script Logic ---
+# Set the working directory to the first argument, or the current directory if not provided.
+WORKDIR="${1:-.}"
+
+# Check if the provided path is a valid directory
+if [ ! -d "$WORKDIR" ]; then
+    echo "Error: Directory '$WORKDIR' not found."
+    exit 1
+fi
+
+# Change to the target directory. Exit if the directory change fails.
+cd "$WORKDIR" || { echo "Error: Could not change to directory '$WORKDIR'."; exit 1; }
+
+echo "--- Starting batch conversion in: $(pwd) ---"
+
 # Loop through every .mkv file in the current directory
 for file in *.mkv; do
     # Check if the file exists to avoid errors with empty directories

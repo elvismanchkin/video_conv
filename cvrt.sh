@@ -1,20 +1,15 @@
 #!/bin/bash
 
-# ======================================================================
-# GPU-Accelerated Video Converter
+# ==============================================================================
+# GPU-Accelerated Video Converter (v6)
 #
-# This script iterates through all .mkv files in a target directory, re-encodes
-# the video using VA-API, and handles audio tracks.
+# NEW in v6:
+# - Automatically detects video bit depth (8-bit vs 10-bit).
+# - Applies the correct pixel format (nv12 for 8-bit, p010le for 10-bit) and
+#   HEVC profile for conversion, fixing artifacts with 10-bit sources.
 #
-# NEW in v5:
-# - Automatically uses a RAM disk (/dev/shm) for temporary files and the
-#   primary conversion artifact to reduce disk I/O and speed up the process.
-#   This is only done if /dev/shm exists and has sufficient space for the file.
-#
-# USAGE: ./cvrt.sh [--replace] [/path/to/directory]
-#
-# REQUIREMENTS: ffmpeg, ffprobe, jq, and VA-API drivers must be installed.
-# ======================================================================
+# USAGE: ./cvrt_v6.sh [--replace] [/path/to/directory]
+# ==============================================================================
 
 # --- Configuration ---
 QUALITY_PARAM=24
@@ -27,8 +22,8 @@ WORKDIR="."
 
 if [[ "$1" == "-r" || "$1" == "--replace" ]]; then
     REPLACE_SOURCE=true
-    echo "[!] Replace mode enabled. Source files will be overwritten on success."
-    shift # Remove the flag from arguments
+    echo "⚠️ Replace mode enabled. Source files will be overwritten on success."
+    shift
 fi
 
 if [ -n "$1" ]; then
@@ -47,9 +42,9 @@ SHM_PATH="/dev/shm"
 CAN_USE_SHM=false
 if [ -d "$SHM_PATH" ]; then
     CAN_USE_SHM=true
-    echo "[i] RAM Disk ($SHM_PATH) is available for use."
+    echo "ℹ️ RAM Disk ($SHM_PATH) is available for use."
 else
-    echo "[i] RAM Disk ($SHM_PATH) not found, will use standard disk for temp files."
+    echo "ℹ️ RAM Disk ($SHM_PATH) not found, will use standard disk for temp files."
 fi
 
 # --- Summary Counters ---
@@ -59,7 +54,7 @@ failed_count=0
 file_list=$(ls *.mkv 2> /dev/null)
 total_files=$(echo "$file_list" | wc -w)
 
-echo "--- [*] Starting batch conversion in: $(pwd) ---"
+echo "--- 🎬 Starting batch conversion in: $(pwd) ---"
 echo "Found $total_files .mkv file(s) to process."
 
 # --- Main Processing Loop ---
@@ -67,7 +62,7 @@ for file in $file_list; do
     [ -f "$file" ] || continue
     echo "--- Processing file: $file ---"
 
-    # --- Determine Paths ---
+    # --- Path and Encoder Settings Determination ---
     final_destination_path=""
     if [ "$REPLACE_SOURCE" = true ]; then
         final_destination_path="$file"
@@ -75,22 +70,21 @@ for file in $file_list; do
         final_destination_path="${file%.*}-converted.mkv"
     fi
 
-    # Determine the temporary path for FFmpeg's output
     ffmpeg_output_path=""
     USE_SHM_FOR_FILE=false
     if [ "$CAN_USE_SHM" = true ]; then
         available_kb=$(df -k "$SHM_PATH" | awk 'NR==2 {print $4}')
-        required_kb=$(du -k "$file" | cut -f1) # Estimate output size <= input size
+        required_kb=$(du -k "$file" | cut -f1)
         if (( available_kb > required_kb )); then
             USE_SHM_FOR_FILE=true
             ffmpeg_output_path="$SHM_PATH/conv-temp-$$_$(basename "$file")"
-            echo "[+] Using RAM disk for temporary output to speed up conversion."
+            echo "👍 Using RAM disk for temporary output."
         else
-            echo "[!] Not enough space on RAM disk for '$file'. Using standard disk."
+            echo "⚠️ Not enough space on RAM disk for '$file'. Using standard disk."
         fi
     fi
 
-    if [ "$USE_SHM_FOR_FILE" = false ]; then
+    if [ ! "$USE_SHM_FOR_FILE" = true ]; then
         if [ "$REPLACE_SOURCE" = true ]; then
             ffmpeg_output_path="${file%.*}-TEMP-$$.mkv"
         else
@@ -98,29 +92,34 @@ for file in $file_list; do
         fi
     fi
 
+    # --- Pixel Format Detection & Setting ---
+    PIX_FMT=$(ffprobe -v error -select_streams v:0 -show_entries stream=pix_fmt -of default=noprint_wrappers=1:nokey=1 "$file")
+    encoder_args=()
+    if [[ "$PIX_FMT" == "yuv420p10le" ]]; then
+        echo "ℹ️ Detected 10-bit video ($PIX_FMT). Using 10-bit encoding profile."
+        encoder_args=("-vf" "format=p010le,hwupload" "-profile:v" "main10")
+    else
+        echo "ℹ️ Detected 8-bit video ($PIX_FMT). Using 8-bit encoding profile."
+        encoder_args=("-vf" "format=nv12,hwupload")
+    fi
+
     # --- Audio Stream Analysis ---
     valid_audio_count=$(ffprobe -v quiet -print_format json -show_streams "$file" | \
                         jq -r '[.streams[] | select(.codec_type=="audio" and .channels!=6)] | length')
     
-    ffmpeg_cmd=()
     conversion_status=1 # 1 for fail, 0 for success
 
-    # ======================================================================
-    # Audio Processing Logic
-    # ======================================================================
     if [ "$valid_audio_count" -eq 0 ]; then
         # --- 5.1 to 2.0 Conversion Logic ---
-        echo "No non-5.1 audio found. Converting 5.1 tracks to stereo."
+        # ... (This logic is unchanged)
         mapfile -t five_one_indices < <(ffprobe -v quiet -print_format json -show_streams "$file" | \
                                           jq -r '.streams[] | select(.codec_type=="audio" and .channels==6) | .index')
 
         if [ ${#five_one_indices[@]} -eq 0 ]; then
-            echo "Skipping: Could not find any audio streams to process."
-            ((skipped_count++))
-            continue
+            echo "Skipping: No audio streams found."
+            ((skipped_count++)); continue
         fi
 
-        # Use /dev/shm for audio temp files if available
         TEMP_DIR_BASE=""
         [ "$USE_SHM_FOR_FILE" = true ] && TEMP_DIR_BASE="$SHM_PATH"
         
@@ -148,23 +147,20 @@ for file in $file_list; do
         done
 
         if [ $audio_input_counter -eq 1 ]; then
-            echo "Error: All audio conversions failed for '$file'. Skipping."
-            ((failed_count++))
-            trap - EXIT; rm -rf -- "$TEMP_DIR"
-            continue
+            echo "Error: All audio conversions failed. Skipping."
+            ((failed_count++)); trap - EXIT; rm -rf -- "$TEMP_DIR"; continue
         fi
         
         echo "Combining video, subtitles, and new stereo audio..."
-        ffmpeg_cmd=(ffmpeg -vaapi_device "$VAAPI_DEVICE" "${ffmpeg_inputs[@]}" "${map_args[@]}" -map_metadata 0 -vf 'format=nv12,hwupload' -c:v hevc_vaapi -qp "$QUALITY_PARAM" -c:a copy -c:s copy -y "$ffmpeg_output_path")
-        
-        "${ffmpeg_cmd[@]}"
+        ffmpeg -vaapi_device "$VAAPI_DEVICE" "${ffmpeg_inputs[@]}" "${map_args[@]}" -map_metadata 0 \
+               "${encoder_args[@]}" -c:v hevc_vaapi -qp "$QUALITY_PARAM" \
+               -c:a copy -c:s copy -y "$ffmpeg_output_path"
         conversion_status=$?
         
         trap - EXIT; rm -rf -- "$TEMP_DIR"
 
     else
         # --- Keep Existing Non-5.1 Tracks ---
-        echo "Found $valid_audio_count non-5.1 audio track(s) to keep."
         mapfile -t stream_indices < <(ffprobe -v quiet -print_format json -show_streams "$file" | \
                                       jq -r '.streams[] | select(.codec_type=="video" or .codec_type=="subtitle" or (.codec_type=="audio" and .channels!=6)) | .index')
         map_args=()
@@ -173,47 +169,39 @@ for file in $file_list; do
         done
 
         echo "Starting conversion (keeping original audio)..."
-        ffmpeg_cmd=(ffmpeg -vaapi_device "$VAAPI_DEVICE" -i "$file" "${map_args[@]}" -vf 'format=nv12,hwupload' -c:v hevc_vaapi -qp "$QUALITY_PARAM" -c:a copy -c:s copy -y "$ffmpeg_output_path")
-        
-        "${ffmpeg_cmd[@]}"
+        ffmpeg -vaapi_device "$VAAPI_DEVICE" -i "$file" "${map_args[@]}" \
+               "${encoder_args[@]}" -c:v hevc_vaapi -qp "$QUALITY_PARAM" \
+               -c:a copy -c:s copy -y "$ffmpeg_output_path"
         conversion_status=$?
     fi
 
-    # ======================================================================
-    # Finalization and Cleanup
-    # ======================================================================
+    # --- Finalization and Cleanup ---
     if [ $conversion_status -eq 0 ]; then
-        # If output was written to a temporary location, move it to the final destination
         if [ "$ffmpeg_output_path" != "$final_destination_path" ]; then
             mv -f "$ffmpeg_output_path" "$final_destination_path"
             if [ $? -eq 0 ]; then
-                if [ "$REPLACE_SOURCE" = true ]; then
-                    echo "[OK] Success. Source file replaced."
-                else
-                    echo "[OK] Successfully created: $final_destination_path"
-                fi
+                 [ "$REPLACE_SOURCE" = true ] && echo "✅ Success. Source file replaced." || echo "✅ Successfully created: $final_destination_path"
                 ((success_count++))
             else
-                echo "[ERR] Error: Failed to move temporary file to '$final_destination_path'."
+                echo "❌ Error: Failed to move temporary file to '$final_destination_path'."
                 ((failed_count++))
             fi
         else
-            # File was written directly to its final destination
-            echo "[OK] Successfully created: $final_destination_path"
+            echo "✅ Successfully created: $final_destination_path"
             ((success_count++))
         fi
     else
-        echo "[ERR] Error: FFmpeg command failed for '$file'."
-        rm -f "$ffmpeg_output_path" # Clean up failed temp/output file
+        echo "❌ Error: FFmpeg command failed for '$file'."
+        rm -f "$ffmpeg_output_path"
         ((failed_count++))
     fi
     echo "-------------------------------------"
 done
 
 # --- Final Summary ---
-echo "--- [*] All files processed. ---"
+echo "--- ✨ All files processed. ---"
 echo "Summary:"
-echo "  - [OK] Successful: $success_count / $total_files"
-echo "  - [ERR] Failed:      $failed_count / $total_files"
-echo "  - [SKIP] Skipped:     $skipped_count / $total_files"
+echo "  - ✅ Successful: $success_count / $total_files"
+echo "  - ❌ Failed:      $failed_count / $total_files"
+echo "  - ⏭️ Skipped:     $skipped_count / $total_files"
 echo "-------------------------------------"

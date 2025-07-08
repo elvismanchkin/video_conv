@@ -1,19 +1,19 @@
 #!/bin/bash
 
 # ==============================================================================
-# GPU-Accelerated Video Converter (v7)
+# GPU-Accelerated Video Converter (v8)
 #
-# NEW in v7:
-# - Changes the hardware acceleration method to be more robust. It now uses
-#   hardware-accelerated decoding and the GPU's own scaler for pixel format
-#   conversion (`scale_vaapi`). This is intended to fix artifacts that appear
-#   at the start of videos due to driver initialization bugs.
+# NEW in v8:
+# - Reverts to the faster CPU-decode/GPU-encode pipeline (like v6).
+# - Adds an explicit GOP size (`-g 240`) as a final attempt to stabilize the
+#   hardware encoder's initialization and fix artifacts at the start of video.
 #
-# USAGE: ./cvrt_v7.sh [--replace] [/path/to/directory]
+# USAGE: ./cvrt_v8.sh [--replace] [/path/to/directory]
 # ==============================================================================
 
 # --- Configuration ---
 QUALITY_PARAM=24
+GOP_SIZE=240 # Keyframe interval, ~10 seconds for 24fps video.
 STEREO_BITRATE="192k"
 VAAPI_DEVICE="/dev/dri/renderD128"
 
@@ -97,16 +97,12 @@ for file in $file_list; do
     PIX_FMT=$(ffprobe -v error -select_streams v:0 -show_entries stream=pix_fmt -of default=noprint_wrappers=1:nokey=1 "$file")
     encoder_args=()
     if [[ "$PIX_FMT" == "yuv420p10le" ]]; then
-        echo "ℹ️ Detected 10-bit video ($PIX_FMT). Using 10-bit hardware pipeline."
-        # Use the GPU's own scaler to convert format, which is more stable.
-        encoder_args=("-vf" "scale_vaapi=w=iw:h=ih:format=p010le" "-profile:v" "main10")
+        echo "ℹ️ Detected 10-bit video ($PIX_FMT). Using 10-bit encoding profile."
+        encoder_args=("-vf" "format=p010le,hwupload" "-profile:v" "main10")
     else
-        echo "ℹ️ Detected 8-bit video ($PIX_FMT). Using 8-bit hardware pipeline."
-        encoder_args=("-vf" "scale_vaapi=w=iw:h=ih:format=nv12")
+        echo "ℹ️ Detected 8-bit video ($PIX_FMT). Using 8-bit encoding profile."
+        encoder_args=("-vf" "format=nv12,hwupload")
     fi
-
-    # --- Hardware Init Arguments ---
-    hw_args=("-hwaccel" "vaapi" "-hwaccel_device" "$VAAPI_DEVICE" "-hwaccel_output_format" "vaapi")
 
     # --- Audio Stream Analysis ---
     valid_audio_count=$(ffprobe -v quiet -print_format json -show_streams "$file" | \
@@ -134,8 +130,7 @@ for file in $file_list; do
         fi
         trap 'rm -rf -- "$TEMP_DIR"' EXIT
 
-        # Unlike previous versions, hwaccel args must come BEFORE the input file.
-        ffmpeg_inputs=("${hw_args[@]}" "-i" "$file")
+        ffmpeg_inputs=("-i" "$file")
         map_args=("-map" "0:v" "-map" "0:s?")
         audio_input_counter=1
 
@@ -157,8 +152,8 @@ for file in $file_list; do
         fi
         
         echo "Combining video, subtitles, and new stereo audio..."
-        ffmpeg "${ffmpeg_inputs[@]}" "${map_args[@]}" -map_metadata 0 \
-               "${encoder_args[@]}" -c:v hevc_vaapi -qp "$QUALITY_PARAM" \
+        ffmpeg -vaapi_device "$VAAPI_DEVICE" "${ffmpeg_inputs[@]}" "${map_args[@]}" -map_metadata 0 \
+               "${encoder_args[@]}" -c:v hevc_vaapi -qp "$QUALITY_PARAM" -g "$GOP_SIZE" \
                -c:a copy -c:s copy -y "$ffmpeg_output_path"
         conversion_status=$?
         
@@ -174,8 +169,8 @@ for file in $file_list; do
         done
 
         echo "Starting conversion (keeping original audio)..."
-        ffmpeg "${hw_args[@]}" -i "$file" "${map_args[@]}" \
-               "${encoder_args[@]}" -c:v hevc_vaapi -qp "$QUALITY_PARAM" \
+        ffmpeg -vaapi_device "$VAAPI_DEVICE" -i "$file" "${map_args[@]}" \
+               "${encoder_args[@]}" -c:v hevc_vaapi -qp "$QUALITY_PARAM" -g "$GOP_SIZE" \
                -c:a copy -c:s copy -y "$ffmpeg_output_path"
         conversion_status=$?
     fi

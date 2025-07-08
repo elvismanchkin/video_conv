@@ -1,44 +1,40 @@
 #!/bin/bash
 
 # ==============================================================================
-# GPU-Accelerated Video Converter (v3)
+# GPU-Accelerated Video Converter (with 5.1 to Stereo Fallback)
 #
-# This script iterates through all .mkv files in a target directory, re-encodes
-# the video using VA-API, and handles audio tracks.
+# This script iterates through all .mkv files in the specified directory
+# (or the current directory if none is provided).
 #
-# NEW FEATURES:
-# - Optional source file replacement with `--replace`.
-# - A summary of completed work is displayed at the end.
-#
-# AUDIO LOGIC:
 # It attempts to keep all non-5.1 audio tracks. If a file ONLY has 5.1
-# audio, the script will convert each 5.1 track to a 2.0 stereo AAC track.
+# audio, the script will convert each 5.1 track to a 2.0 stereo AAC track
+# and use those in the final output file.
 #
-# USAGE: ./cvrt_v3.sh [--replace] [/path/to/directory]
+# Original video, all subtitles, and the appropriate audio tracks (either
+# the original non-5.1 or the converted stereo) are kept. The video is
+# re-encoded using GPU acceleration.
+#
+# USAGE: ./cvrt_v2.sh [path/to/directory]
 #
 # REQUIREMENTS: ffmpeg, ffprobe, jq, and VA-API drivers must be installed.
 # ==============================================================================
 
 # --- Configuration ---
+# Set the video quality. Lower is better quality, higher is smaller file.
+# 20-28 is a reasonable range.
 QUALITY_PARAM=24
+
+# Set the audio quality for 5.1 -> stereo conversion.
 STEREO_BITRATE="192k"
+
+# Set the VA-API render device.
+# /dev/dri/renderD128 is usually the discrete GPU.
+# Check `ls /dev/dri` if you are unsure.
 VAAPI_DEVICE="/dev/dri/renderD128"
 
-# --- Argument Parsing & Initialization ---
-REPLACE_SOURCE=false
-WORKDIR="."
-
-# Simple argument parsing for the --replace flag and optional directory
-if [[ "$1" == "-r" || "$1" == "--replace" ]]; then
-    REPLACE_SOURCE=true
-    echo "⚠️ Replace mode enabled. Source files will be overwritten on success."
-    shift # Remove the flag from arguments
-fi
-
-# Use the next argument as the working directory, if it exists
-if [ -n "$1" ]; then
-    WORKDIR="$1"
-fi
+# --- Script Logic ---
+# Set the working directory to the first argument, or the current directory if not provided.
+WORKDIR="${1:-.}"
 
 # Check if the provided path is a valid directory
 if [ ! -d "$WORKDIR" ]; then
@@ -49,136 +45,124 @@ fi
 # Change to the target directory. Exit if the directory change fails.
 cd "$WORKDIR" || { echo "Error: Could not change to directory '$WORKDIR'."; exit 1; }
 
-# --- Summary Counters ---
-success_count=0
-skipped_count=0
-failed_count=0
-file_list=$(ls *.mkv 2> /dev/null)
-total_files=$(echo "$file_list" | wc -w)
+echo "--- Starting batch conversion in: $(pwd) ---"
 
-echo "--- 🎬 Starting batch conversion in: $(pwd) ---"
-echo "Found $total_files .mkv file(s) to process."
-
-# --- Main Processing Loop ---
-for file in $file_list; do
+# Loop through every .mkv file in the current directory
+for file in *.mkv; do
     # Check if the file exists to avoid errors with empty directories
     [ -f "$file" ] || continue
 
     echo "--- Processing file: $file ---"
 
-    # If replacing, use a temp name; otherwise, use the "-converted" suffix.
-    if [ "$REPLACE_SOURCE" = true ]; then
-        output_file="${file%.*}-TEMP-$$.mkv"
-    else
-        output_file="${file%.*}-converted.mkv"
-    fi
+    # Define the output filename
+    output_file="${file%.*}-converted.mkv"
 
     # Count how many audio tracks are NOT 6-channel (5.1)
     valid_audio_count=$(ffprobe -v quiet -print_format json -show_streams "$file" | \
                         jq -r '[.streams[] | select(.codec_type=="audio" and .channels!=6)] | length')
 
-    # Default ffmpeg command arguments
-    ffmpeg_cmd=()
+    # ==========================================================================
+    # MODIFIED LOGIC BLOCK: Check if we need to convert or copy audio
+    # ==========================================================================
 
-    # ==========================================================================
-    # Audio Processing Logic
-    # ==========================================================================
     if [ "$valid_audio_count" -eq 0 ]; then
-        # --- 5.1 to 2.0 Conversion Logic ---
+        # --- NEW: 5.1 to 2.0 Conversion Logic ---
+        # This block runs if NO non-5.1 audio tracks were found.
         echo "No non-5.1 audio found. Converting 5.1 tracks to stereo."
+
+        # Get the indices of all 6-channel (5.1) audio tracks
         mapfile -t five_one_indices < <(ffprobe -v quiet -print_format json -show_streams "$file" | \
                                           jq -r '.streams[] | select(.codec_type=="audio" and .channels==6) | .index')
 
+        # If there are no 5.1 tracks either, then there's no audio at all. Skip.
         if [ ${#five_one_indices[@]} -eq 0 ]; then
-            echo "Skipping: Could not find any audio streams to process."
-            ((skipped_count++))
+            echo "Could not find any audio streams to process. Skipping."
             continue
         fi
 
+        # Create a temporary directory for the converted audio files
         TEMP_DIR=$(mktemp -d)
+        # Set a trap to automatically clean up the temp directory on script exit or error
         trap 'rm -rf -- "$TEMP_DIR"' EXIT
 
         ffmpeg_inputs=("-i" "$file")
-        map_args=("-map" "0:v" "-map" "0:s?")
+        map_args=("-map" "0:v" "-map" "0:s?") # Map all video and all subtitle streams from the original file
         audio_input_counter=1
 
+        # Loop through each 5.1 track, convert it, and add it to our argument lists
         for index in "${five_one_indices[@]}"; do
+            echo "Converting 5.1 audio track #$index to stereo..."
             output_audio="$TEMP_DIR/audio_$index.m4a"
+            
+            # Convert one audio track to stereo AAC
             ffmpeg -y -i "$file" -map "0:$index" -c:a aac -ac 2 -b:a "$STEREO_BITRATE" "$output_audio" &> /dev/null
+
+            # If conversion was successful, add it to our inputs and map arguments
             if [ $? -eq 0 ]; then
                 ffmpeg_inputs+=("-i" "$output_audio")
-                map_args+=("-map" "$audio_input_counter:a")
+                map_args+=("-map" "$audio_input_counter:a") # Map the audio from the new input file
                 ((audio_input_counter++))
             else
                 echo "Warning: Failed to convert audio stream #$index from '$file'."
             fi
         done
-
+        
+        # If all audio conversions failed, we can't proceed.
         if [ $audio_input_counter -eq 1 ]; then
             echo "Error: All audio conversions failed for '$file'. Skipping."
-            ((failed_count++))
+            # Clean up and continue to the next file
             trap - EXIT
             rm -rf -- "$TEMP_DIR"
             continue
         fi
-        
-        echo "Combining video, subtitles, and new stereo audio..."
-        ffmpeg_cmd=(-vaapi_device "$VAAPI_DEVICE" "${ffmpeg_inputs[@]}" "${map_args[@]}" -map_metadata 0 -vf 'format=nv12,hwupload' -c:v hevc_vaapi -qp "$QUALITY_PARAM" -c:a copy -c:s copy "$output_file")
-        
-        # Run ffmpeg
-        "${ffmpeg_cmd[@]}"
 
-        # Clean up temp audio files
+        echo "Combining video, subtitles, and new stereo audio..."
+        # Run the final GPU-accelerated command with multiple inputs
+        ffmpeg -vaapi_device "$VAAPI_DEVICE" \
+               "${ffmpeg_inputs[@]}" \
+               "${map_args[@]}" \
+               -map_metadata 0 \
+               -vf 'format=nv12,hwupload' \
+               -c:v hevc_vaapi \
+               -qp "$QUALITY_PARAM" \
+               -c:a copy \
+               -c:s copy \
+               "$output_file"
+
+        # Conversion is done, disable and manually run the cleanup trap
         trap - EXIT
         rm -rf -- "$TEMP_DIR"
 
     else
-        # --- Keep Existing Non-5.1 Tracks ---
+        # --- ORIGINAL: Keep Existing Non-5.1 Tracks ---
+        # This block runs if at least one non-5.1 audio track was found.
         echo "Found $valid_audio_count non-5.1 audio track(s) to keep."
+
+        map_args=()
+        # Get indices for all video, subtitle, and non-5.1 audio streams
         mapfile -t stream_indices < <(ffprobe -v quiet -print_format json -show_streams "$file" | \
                                       jq -r '.streams[] | select(.codec_type=="video" or .codec_type=="subtitle" or (.codec_type=="audio" and .channels!=6)) | .index')
-        map_args=()
+
+        # Build the map arguments from the found indices
         for index in "${stream_indices[@]}"; do
             map_args+=("-map" "0:$index")
         done
 
         echo "Starting conversion (keeping original audio)..."
-        ffmpeg_cmd=(-vaapi_device "$VAAPI_DEVICE" -i "$file" "${map_args[@]}" -vf 'format=nv12,hwupload' -c:v hevc_vaapi -qp "$QUALITY_PARAM" -c:a copy -c:s copy "$output_file")
-        
-        # Run ffmpeg
-        "${ffmpeg_cmd[@]}"
+        # Run the original GPU-accelerated FFmpeg command
+        ffmpeg -vaapi_device "$VAAPI_DEVICE" \
+               -i "$file" \
+               "${map_args[@]}" \
+               -vf 'format=nv12,hwupload' \
+               -c:v hevc_vaapi \
+               -qp "$QUALITY_PARAM" \
+               -c:a copy \
+               -c:s copy \
+               "$output_file"
     fi
 
-    # ==========================================================================
-    # Finalization and Cleanup
-    # ==========================================================================
-    if [ $? -eq 0 ]; then
-        if [ "$REPLACE_SOURCE" = true ]; then
-            # Move the temporary file to replace the original
-            mv -f "$output_file" "$file"
-            if [ $? -eq 0 ]; then
-                echo "✅ Success. Source file replaced."
-                ((success_count++))
-            else
-                echo "❌ Error: Failed to replace source with '$output_file'."
-                ((failed_count++))
-            fi
-        else
-            echo "✅ Successfully created: $output_file"
-            ((success_count++))
-        fi
-    else
-        echo "❌ Error: FFmpeg command failed for '$file'."
-        rm -f "$output_file" # Clean up failed temp/output file
-        ((failed_count++))
-    fi
+    echo "Successfully created: $output_file"
     echo "-------------------------------------"
 done
 
-# --- Final Summary ---
-echo "--- ✨ All files processed. ---"
-echo "Summary:"
-echo "  - ✅ Successful: $success_count / $total_files"
-echo "  - ❌ Failed:      $failed_count / $total_files"
-echo "  - ⏭️ Skipped:     $skipped_count / $total_files"
-echo "-------------------------------------"
+echo "All files processed."

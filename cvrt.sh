@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ==============================================================================
-# Self-Contained GPU Video Converter (v11)
+# Self-Contained GPU Video Converter (v7.1)
 #
 # FEATURES:
 # - Enhanced hardware detection with better fallback chains
@@ -10,7 +10,7 @@
 # - Better AMD APU and Intel iGPU detection
 # - Automatic quality optimization per hardware type
 #
-# USAGE: ./cvrt_v11.sh [--replace] [--debug] [/path/to/directory]
+# USAGE: ./cvrt_v7.sh [--replace] [--debug] [/path/to/directory]
 #
 # SETUP REQUIREMENTS:
 #
@@ -58,6 +58,7 @@ FALLBACK_ENCODER=""
 # --- Argument Parsing ---
 REPLACE_SOURCE=false
 WORKDIR="."
+FORCE_ENCODER=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -71,8 +72,34 @@ while [[ $# -gt 0 ]]; do
             echo "🔍 Debug mode enabled"
             shift
             ;;
+        --gpu)
+            FORCE_ENCODER="GPU"
+            echo "🎯 GPU encoding forced"
+            shift
+            ;;
+        --cpu)
+            FORCE_ENCODER="SOFTWARE"
+            echo "🎯 CPU encoding forced"
+            shift
+            ;;
+        --nvenc)
+            FORCE_ENCODER="NVENC"
+            echo "🎯 NVENC encoding forced"
+            shift
+            ;;
+        --vaapi)
+            FORCE_ENCODER="VAAPI"
+            echo "🎯 VAAPI encoding forced"
+            shift
+            ;;
+        --qsv)
+            FORCE_ENCODER="QSV"
+            echo "🎯 QSV encoding forced"
+            shift
+            ;;
         -*)
             echo "Unknown option $1"
+            echo "Usage: $0 [--replace] [--debug] [--gpu|--cpu|--nvenc|--vaapi|--qsv] [directory]"
             exit 1
             ;;
         *)
@@ -237,7 +264,43 @@ detect_qsv_support() {
 }
 
 determine_best_encoder() {
-    # Smart encoder selection with quality priority
+    # Check if encoder is force-selected
+    if [ -n "$FORCE_ENCODER" ]; then
+        case "$FORCE_ENCODER" in
+            "GPU")
+                # Auto-select best available GPU encoder
+                if [ "${ENCODER_CAPS[NVENC_HEVC]}" = "true" ]; then
+                    BEST_ENCODER="NVENC"
+                elif [ "${ENCODER_CAPS[QSV_HEVC]}" = "true" ]; then
+                    BEST_ENCODER="QSV"
+                elif [ "${ENCODER_CAPS[VAAPI_HEVC]}" = "true" ]; then
+                    BEST_ENCODER="VAAPI"
+                else
+                    echo "❌ No GPU encoder available, falling back to SOFTWARE"
+                    BEST_ENCODER="SOFTWARE"
+                fi
+                ;;
+            "NVENC"|"QSV"|"VAAPI")
+                if [ "${ENCODER_CAPS[${FORCE_ENCODER}_HEVC]}" = "true" ]; then
+                    BEST_ENCODER="$FORCE_ENCODER"
+                else
+                    echo "❌ $FORCE_ENCODER not available, falling back to SOFTWARE"
+                    BEST_ENCODER="SOFTWARE"
+                fi
+                ;;
+            "SOFTWARE")
+                BEST_ENCODER="SOFTWARE"
+                ;;
+        esac
+        
+        # Set fallback
+        if [ "$BEST_ENCODER" != "SOFTWARE" ]; then
+            FALLBACK_ENCODER="SOFTWARE"
+        fi
+        return
+    fi
+    
+    # Original auto-detection logic
     local encoder_score=0
     local best_score=0
     

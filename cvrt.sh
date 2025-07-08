@@ -660,4 +660,36 @@ for file in $file_list; do
             fi
         else
             echo "   ✅ Created: $final_destination_path"
-            ((
+            ((success_count++))
+        fi
+    else
+        echo "   ❌ Conversion failed for '$file'"
+        rm -f "$ffmpeg_output_path"
+        ((failed_count++))
+    fi
+    
+    unset file_analysis
+    echo "-------------------------------------"
+done
+
+# --- Final Summary ---
+echo
+echo "==================== ✨ CONVERSION SUMMARY ===================="
+echo "Total files processed: $total_files"
+echo "✅ Successful: $success_count"
+echo "❌ Failed: $failed_count"
+echo "⏭️ Skipped: $skipped_count"
+
+if [ $success_count -gt 0 ]; then
+    echo
+    echo "🎉 Conversion completed successfully!"
+    echo "Primary encoder used: $BEST_ENCODER"
+    [ -n "$FALLBACK_ENCODER" ] && echo "Fallback encoder: $FALLBACK_ENCODER"
+fi
+
+if [ $failed_count -gt 0 ]; then
+    echo
+    echo "⚠️ Some files failed to convert. Try running with --debug for more information."
+fi
+
+echo "====================================================================="

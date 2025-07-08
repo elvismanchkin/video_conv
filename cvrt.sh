@@ -1,14 +1,15 @@
 #!/bin/bash
 
 # ==============================================================================
-# GPU-Accelerated Video Converter (v6)
+# GPU-Accelerated Video Converter (v6.1 - Fixed)
 #
-# NEW in v6:
-# - Automatically detects video bit depth (8-bit vs 10-bit).
-# - Applies the correct pixel format (nv12 for 8-bit, p010le for 10-bit) and
-#   HEVC profile for conversion, fixing artifacts with 10-bit sources.
+# FIXES in v6.1:
+# - Added proper VAAPI initialization and sync points
+# - Improved 10-bit handling with better pixel format detection
+# - Added fallback mechanisms for problematic streams
+# - Better error handling and quality settings
 #
-# USAGE: ./cvrt_v6.sh [--replace] [/path/to/directory]
+# USAGE: ./cvrt_v6.1.sh [--replace] [/path/to/directory]
 # ==============================================================================
 
 # --- Configuration ---
@@ -36,6 +37,16 @@ if [ ! -d "$WORKDIR" ]; then
 fi
 
 cd "$WORKDIR" || { echo "Error: Could not change to directory '$WORKDIR'."; exit 1; }
+
+# --- Check VAAPI Support ---
+if ! vainfo --display drm --device "$VAAPI_DEVICE" &>/dev/null; then
+    echo "⚠️ Warning: VAAPI device $VAAPI_DEVICE not accessible or not working properly"
+    echo "Falling back to software encoding..."
+    USE_VAAPI=false
+else
+    USE_VAAPI=true
+    echo "✅ VAAPI device $VAAPI_DEVICE is working"
+fi
 
 # --- Check for RAM Disk (/dev/shm) ---
 SHM_PATH="/dev/shm"
@@ -92,15 +103,58 @@ for file in $file_list; do
         fi
     fi
 
-    # --- Pixel Format Detection & Setting ---
+    # --- Enhanced Pixel Format Detection & Setting ---
     PIX_FMT=$(ffprobe -v error -select_streams v:0 -show_entries stream=pix_fmt -of default=noprint_wrappers=1:nokey=1 "$file")
+    BIT_DEPTH=$(ffprobe -v error -select_streams v:0 -show_entries stream=bits_per_raw_sample -of default=noprint_wrappers=1:nokey=1 "$file")
+    
     encoder_args=()
-    if [[ "$PIX_FMT" == "yuv420p10le" ]]; then
-        echo "ℹ️ Detected 10-bit video ($PIX_FMT). Using 10-bit encoding profile."
-        encoder_args=("-vf" "format=p010le,hwupload" "-profile:v" "main10")
+    
+    if [ "$USE_VAAPI" = true ]; then
+        # Check if this is truly 10-bit content
+        if [[ "$PIX_FMT" == *"10le" ]] || [[ "$PIX_FMT" == *"p010"* ]] || [[ "$BIT_DEPTH" == "10" ]]; then
+            echo "ℹ️ Detected 10-bit video ($PIX_FMT, ${BIT_DEPTH:-unknown} bits). Using 10-bit VAAPI encoding."
+            encoder_args=(
+                "-init_hw_device" "vaapi=hw:$VAAPI_DEVICE"
+                "-filter_hw_device" "hw"
+                "-vf" "format=p010le,hwupload"
+                "-c:v" "hevc_vaapi"
+                "-profile:v" "main10"
+                "-qp" "$QUALITY_PARAM"
+                "-compression_level" "1"
+            )
+        else
+            echo "ℹ️ Detected 8-bit video ($PIX_FMT, ${BIT_DEPTH:-unknown} bits). Using 8-bit VAAPI encoding."
+            encoder_args=(
+                "-init_hw_device" "vaapi=hw:$VAAPI_DEVICE"
+                "-filter_hw_device" "hw"
+                "-vf" "format=nv12,hwupload"
+                "-c:v" "hevc_vaapi"
+                "-profile:v" "main"
+                "-qp" "$QUALITY_PARAM"
+                "-compression_level" "1"
+            )
+        fi
     else
-        echo "ℹ️ Detected 8-bit video ($PIX_FMT). Using 8-bit encoding profile."
-        encoder_args=("-vf" "format=nv12,hwupload")
+        # Software fallback
+        if [[ "$PIX_FMT" == *"10le" ]] || [[ "$PIX_FMT" == *"p010"* ]] || [[ "$BIT_DEPTH" == "10" ]]; then
+            echo "ℹ️ Using software encoding for 10-bit content."
+            encoder_args=(
+                "-c:v" "libx265"
+                "-preset" "medium"
+                "-crf" "$QUALITY_PARAM"
+                "-profile:v" "main10"
+                "-pix_fmt" "yuv420p10le"
+            )
+        else
+            echo "ℹ️ Using software encoding for 8-bit content."
+            encoder_args=(
+                "-c:v" "libx265"
+                "-preset" "medium"
+                "-crf" "$QUALITY_PARAM"
+                "-profile:v" "main"
+                "-pix_fmt" "yuv420p"
+            )
+        fi
     fi
 
     # --- Audio Stream Analysis ---
@@ -111,7 +165,6 @@ for file in $file_list; do
 
     if [ "$valid_audio_count" -eq 0 ]; then
         # --- 5.1 to 2.0 Conversion Logic ---
-        # ... (This logic is unchanged)
         mapfile -t five_one_indices < <(ffprobe -v quiet -print_format json -show_streams "$file" | \
                                           jq -r '.streams[] | select(.codec_type=="audio" and .channels==6) | .index')
 
@@ -152,8 +205,8 @@ for file in $file_list; do
         fi
         
         echo "Combining video, subtitles, and new stereo audio..."
-        ffmpeg -vaapi_device "$VAAPI_DEVICE" "${ffmpeg_inputs[@]}" "${map_args[@]}" -map_metadata 0 \
-               "${encoder_args[@]}" -c:v hevc_vaapi -qp "$QUALITY_PARAM" \
+        ffmpeg "${ffmpeg_inputs[@]}" "${map_args[@]}" -map_metadata 0 \
+               "${encoder_args[@]}" \
                -c:a copy -c:s copy -y "$ffmpeg_output_path"
         conversion_status=$?
         
@@ -169,10 +222,73 @@ for file in $file_list; do
         done
 
         echo "Starting conversion (keeping original audio)..."
-        ffmpeg -vaapi_device "$VAAPI_DEVICE" -i "$file" "${map_args[@]}" \
-               "${encoder_args[@]}" -c:v hevc_vaapi -qp "$QUALITY_PARAM" \
+        ffmpeg -i "$file" "${map_args[@]}" \
+               "${encoder_args[@]}" \
                -c:a copy -c:s copy -y "$ffmpeg_output_path"
         conversion_status=$?
+    fi
+
+    # --- Fallback to software encoding on failure ---
+    if [ $conversion_status -ne 0 ] && [ "$USE_VAAPI" = true ]; then
+        echo "⚠️ VAAPI encoding failed, trying software fallback..."
+        
+        # Retry with software encoding
+        if [[ "$PIX_FMT" == *"10le" ]] || [[ "$PIX_FMT" == *"p010"* ]] || [[ "$BIT_DEPTH" == "10" ]]; then
+            software_encoder_args=(
+                "-c:v" "libx265"
+                "-preset" "medium"
+                "-crf" "$QUALITY_PARAM"
+                "-profile:v" "main10"
+                "-pix_fmt" "yuv420p10le"
+            )
+        else
+            software_encoder_args=(
+                "-c:v" "libx265"
+                "-preset" "medium"
+                "-crf" "$QUALITY_PARAM"
+                "-profile:v" "main"
+                "-pix_fmt" "yuv420p"
+            )
+        fi
+
+        if [ "$valid_audio_count" -eq 0 ]; then
+            # Re-run with software encoding for 5.1 conversion case
+            TEMP_DIR_BASE=""
+            [ "$USE_SHM_FOR_FILE" = true ] && TEMP_DIR_BASE="$SHM_PATH"
+            
+            if [ -n "$TEMP_DIR_BASE" ]; then
+                TEMP_DIR=$(mktemp -d -p "$TEMP_DIR_BASE")
+            else
+                TEMP_DIR=$(mktemp -d)
+            fi
+            trap 'rm -rf -- "$TEMP_DIR"' EXIT
+
+            ffmpeg_inputs=("-i" "$file")
+            map_args=("-map" "0:v" "-map" "0:s?")
+            audio_input_counter=1
+
+            for index in "${five_one_indices[@]}"; do
+                output_audio="$TEMP_DIR/audio_$index.m4a"
+                ffmpeg -y -i "$file" -map "0:$index" -c:a aac -ac 2 -b:a "$STEREO_BITRATE" "$output_audio" &> /dev/null
+                if [ $? -eq 0 ]; then
+                    ffmpeg_inputs+=("-i" "$output_audio")
+                    map_args+=("-map" "$audio_input_counter:a")
+                    ((audio_input_counter++))
+                fi
+            done
+
+            ffmpeg "${ffmpeg_inputs[@]}" "${map_args[@]}" -map_metadata 0 \
+                   "${software_encoder_args[@]}" \
+                   -c:a copy -c:s copy -y "$ffmpeg_output_path"
+            conversion_status=$?
+            
+            trap - EXIT; rm -rf -- "$TEMP_DIR"
+        else
+            ffmpeg -i "$file" "${map_args[@]}" \
+                   "${software_encoder_args[@]}" \
+                   -c:a copy -c:s copy -y "$ffmpeg_output_path"
+            conversion_status=$?
+        fi
     fi
 
     # --- Finalization and Cleanup ---
@@ -191,7 +307,7 @@ for file in $file_list; do
             ((success_count++))
         fi
     else
-        echo "❌ Error: FFmpeg command failed for '$file'."
+        echo "❌ Error: Conversion failed for '$file'."
         rm -f "$ffmpeg_output_path"
         ((failed_count++))
     fi

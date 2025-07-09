@@ -21,28 +21,36 @@ detect_cpu_info() {
     local cpu_info
     cpu_info=$(lscpu 2>/dev/null || cat /proc/cpuinfo 2>/dev/null)
 
-    if echo "$cpu_info" | grep -qi "AMD"; then
-        CPU_VENDOR="AMD"
-        CPU_MODEL=$(echo "$cpu_info" | grep -i "model name" | head -1 | cut -d: -f2 | xargs)
-
-        # AMD APU detection (integrated graphics)
-        if echo "$CPU_MODEL" | grep -qi "G\|APU\|PRO.*G\|GE\|Ryzen.*[0-9]G"; then
-            HW_AMD_INTEGRATED="true"
-            log_debug "AMD APU detected: $CPU_MODEL"
-        fi
-
-    elif echo "$cpu_info" | grep -qi "Intel"; then
-        CPU_VENDOR="Intel"
-        CPU_MODEL=$(echo "$cpu_info" | grep -i "model name" | head -1 | cut -d: -f2 | xargs)
-
-        # Intel integrated graphics detection
-        if lspci 2>/dev/null | grep -qi "Intel.*Graphics\|Intel.*Display\|Intel.*UHD\|Intel.*Iris"; then
-            HW_INTEL_INTEGRATED="true"
-            log_debug "Intel iGPU detected: $CPU_MODEL"
-        fi
-    else
+    if [[ -z "$cpu_info" ]]; then
+        log_warn "Could not retrieve CPU information from lscpu or /proc/cpuinfo."
+        [[ -z "$CPU_CORES" ]] && CPU_CORES="N/A"
         CPU_VENDOR="Unknown"
         CPU_MODEL="Unknown"
+        # We don't return 1 here, to allow the script to continue with unknown CPU
+    else
+        if echo "$cpu_info" | grep -qi "AMD"; then
+            CPU_VENDOR="AMD"
+            CPU_MODEL=$(echo "$cpu_info" | grep -i "model name" | head -1 | cut -d: -f2 | xargs)
+
+            # AMD APU detection (integrated graphics)
+            if echo "$CPU_MODEL" | grep -qi "G\|APU\|PRO.*G\|GE\|Ryzen.*[0-9]G"; then
+                HW_AMD_INTEGRATED="true"
+                log_debug "AMD APU detected: $CPU_MODEL"
+            fi
+
+        elif echo "$cpu_info" | grep -qi "Intel"; then
+            CPU_VENDOR="Intel"
+            CPU_MODEL=$(echo "$cpu_info" | grep -i "model name" | head -1 | cut -d: -f2 | xargs)
+
+            # Intel integrated graphics detection
+            if lspci 2>/dev/null | grep -qi "Intel.*Graphics\|Intel.*Display\|Intel.*UHD\|Intel.*Iris"; then
+                HW_INTEL_INTEGRATED="true"
+                log_debug "Intel iGPU detected: $CPU_MODEL"
+            fi
+        else
+            CPU_VENDOR="Unknown"
+            CPU_MODEL="Unknown"
+        fi
     fi
 
     log_debug "CPU: $CPU_VENDOR $CPU_MODEL ($CPU_CORES cores)"
@@ -57,7 +65,7 @@ detect_gpu_hardware() {
         local nvidia_info
         nvidia_info=$(nvidia-smi --query-gpu=name --format=csv,noheader,nounits 2>/dev/null | head -1)
         if [[ -n "$nvidia_info" ]]; then
-            HW_SUPPORT["NVIDIA"]="true"
+            HW_NVIDIA_GPU="true"
             log_debug "NVIDIA GPU: $nvidia_info"
         fi
     fi
@@ -66,7 +74,7 @@ detect_gpu_hardware() {
     if lspci 2>/dev/null | grep -qi "AMD.*Radeon\|AMD.*Graphics\|AMD.*RX\|AMD.*Pro"; then
         local amd_gpu_info
         amd_gpu_info=$(lspci 2>/dev/null | grep -i "AMD.*Radeon\|AMD.*Graphics\|AMD.*RX\|AMD.*Pro" | head -1 | sed 's/.*: //')
-        HW_SUPPORT["AMD_DISCRETE"]="true"
+        HW_AMD_GPU="true"
         log_debug "AMD GPU: $amd_gpu_info"
     fi
 
@@ -74,7 +82,7 @@ detect_gpu_hardware() {
     if lspci 2>/dev/null | grep -qi "Intel.*Arc\|Intel.*Xe"; then
         local intel_gpu_info
         intel_gpu_info=$(lspci 2>/dev/null | grep -i "Intel.*Arc\|Intel.*Xe" | head -1 | sed 's/.*: //')
-        HW_SUPPORT["INTEL_DISCRETE"]="true"
+        HW_INTEL_ARC="true"
         log_debug "Intel dGPU: $intel_gpu_info"
     fi
 }
@@ -135,7 +143,7 @@ detect_vaapi_support() {
 detect_nvenc_support() {
     log_debug "Testing NVENC support"
 
-    if [[ "${HW_SUPPORT[NVIDIA]:-}" != "true" ]]; then
+    if [[ "$HW_NVIDIA_GPU" != "true" ]]; then
         log_debug "No NVIDIA GPU detected"
         return 1
     fi
@@ -171,7 +179,7 @@ detect_nvenc_support() {
 detect_qsv_support() {
     log_debug "Testing QSV support"
 
-    if [[ "${HW_SUPPORT[INTEL_INTEGRATED]:-}" != "true" && "${HW_SUPPORT[INTEL_DISCRETE]:-}" != "true" ]]; then
+    if [[ "$HW_INTEL_INTEGRATED" != "true" && "$HW_INTEL_ARC" != "true" ]]; then
         log_debug "No Intel GPU detected"
         return 1
     fi
@@ -226,7 +234,6 @@ detect_all_hardware() {
     log_debug "Starting comprehensive hardware detection"
 
     # Clear previous state
-    HW_SUPPORT=()
     HW_DEVICES=()
     ENCODER_CAPS=()
 
@@ -243,15 +250,15 @@ detect_all_hardware() {
 display_hardware_summary() {
     local gpu_info=""
 
-    if [[ "${HW_SUPPORT[NVIDIA]:-}" == "true" ]]; then
+    if [[ "$HW_NVIDIA_GPU" == "true" ]]; then
         gpu_info="NVIDIA"
-    elif [[ "${HW_SUPPORT[INTEL_DISCRETE]:-}" == "true" ]]; then
+    elif [[ "$HW_INTEL_ARC" == "true" ]]; then
         gpu_info="Intel dGPU"
-    elif [[ "${HW_SUPPORT[AMD_DISCRETE]:-}" == "true" ]]; then
+    elif [[ "$HW_AMD_GPU" == "true" ]]; then
         gpu_info="AMD dGPU"
-    elif [[ "${HW_SUPPORT[INTEL_INTEGRATED]:-}" == "true" ]]; then
+    elif [[ "$HW_INTEL_INTEGRATED" == "true" ]]; then
         gpu_info="Intel iGPU"
-    elif [[ "${HW_SUPPORT[AMD_INTEGRATED]:-}" == "true" ]]; then
+    elif [[ "$HW_AMD_INTEGRATED" == "true" ]]; then
         gpu_info="AMD APU"
     else
         gpu_info="None"

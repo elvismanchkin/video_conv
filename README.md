@@ -12,6 +12,11 @@ The script is designed to work correctly even when called through symlinks from 
   - NVIDIA NVENC (RTX/GTX series, AV1 support on newer cards)
   - Intel QSV (integrated and Arc discrete GPUs)
   - AMD VAAPI (APUs and discrete GPUs)
+* **Multi-Format Support**: Input: MKV, MP4, AVI, MOV, M4V, WMV, FLV, WebM, TS, MTS, M2TS
+* **Multi-Codec Support**: HEVC (H.265), H.264, AV1, VP9 with automatic selection
+* **Advanced Processing**: Scaling, deinterlacing, denoising, sharpening filters
+* **Subtitle Handling**: Copy, burn, extract, or remove subtitles
+* **Metadata Control**: Copy, strip, or minimal metadata handling
 * **Configurable Settings**: Environment variable overrides and config files
 * **Smart Audio Processing**: Preserves non-5.1 tracks, converts 5.1 to stereo when needed
 * **RAM Disk Optimization**: Automatic use of `/dev/shm` when available
@@ -172,6 +177,26 @@ cvrt --cpu /path/to/videos
 cvrt --gpu /media/4k-content
 ```
 
+**Convert to different format with specific codec:**
+```bash
+cvrt --format mp4 --codec h264 /path/to/videos
+```
+
+**Scale videos to 1080p with deinterlacing:**
+```bash
+cvrt --scale 1080p --deinterlace /path/to/videos
+```
+
+**Process with advanced filters:**
+```bash
+cvrt --denoise --sharpen --quality 20 /path/to/videos
+```
+
+**Handle subtitles and metadata:**
+```bash
+cvrt --subtitles burn --metadata strip /path/to/videos
+```
+
 **Running from script directory (if not installed system-wide):**
 ```bash
 ./cvrt.sh /media/movies
@@ -199,6 +224,19 @@ Edit `config/defaults.conf` to modify:
 - Hardware detection thresholds
 - Temporary file management
 - Buffer sizes and bitrates
+
+## User Customization
+
+You can override any configuration by creating a `config/custom.conf` file. This file is automatically sourced after `defaults.conf` and can be used to set or override any variable or array.
+
+Example:
+```bash
+# config/custom.conf
+readonly DEFAULT_QUALITY_PARAM=20
+readonly SUPPORTED_INPUT_EXTENSIONS=("mkv" "mp4" "mov" "webm")
+```
+
+See [HACKING.md](./HACKING.md) for advanced extension guides (adding formats, codecs, filters, hardware, CLI options, and more).
 
 ## Hardware-Specific Notes
 

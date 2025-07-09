@@ -25,11 +25,25 @@ source "${LIB_DIR}/hardware.sh"
 source "${LIB_DIR}/encoders.sh"
 source "${LIB_DIR}/video_analysis.sh"
 source "${LIB_DIR}/audio_processing.sh"
+source "${LIB_DIR}/video_filters.sh"
 
 WORK_DIR="."
 REPLACE_SOURCE=false
 DEBUG_MODE=false
 FORCE_ENCODER=""
+
+# Initialize new options with defaults
+OUTPUT_FORMAT="${DEFAULT_OUTPUT_FORMAT}"
+VIDEO_CODEC="${DEFAULT_VIDEO_CODEC}"
+AUDIO_CODEC="${DEFAULT_AUDIO_CODEC}"
+ENCODING_PRESET="${DEFAULT_PRESET}"
+SCALE_MODE="${DEFAULT_SCALE_MODE}"
+DEINTERLACE="${DEFAULT_DEINTERLACE}"
+DENOISE="${DEFAULT_DENOISE}"
+SHARPEN="${DEFAULT_SHARPEN}"
+SUBTITLE_MODE="${DEFAULT_SUBTITLE_MODE}"
+METADATA_MODE="${DEFAULT_METADATA_MODE}"
+THREAD_COUNT="${DEFAULT_THREADS}"
 # Using function approach for STATS to be compatible with bash 3.2
 get_stat() {
     case "$1" in
@@ -73,6 +87,128 @@ parse_arguments() {
                 log_info "Forced encoder: ${FORCE_ENCODER}"
                 shift
                 ;;
+            --format)
+                if [[ -n "${2:-}" && ! "$2" =~ ^- ]]; then
+                    OUTPUT_FORMAT="$2"
+                    log_info "Output format: $OUTPUT_FORMAT"
+                    shift 2
+                else
+                    log_error "Missing format argument"
+                    show_usage
+                    exit 1
+                fi
+                ;;
+            --codec)
+                if [[ -n "${2:-}" && ! "$2" =~ ^- ]]; then
+                    VIDEO_CODEC="$2"
+                    log_info "Video codec: $VIDEO_CODEC"
+                    shift 2
+                else
+                    log_error "Missing codec argument"
+                    show_usage
+                    exit 1
+                fi
+                ;;
+            --audio-codec)
+                if [[ -n "${2:-}" && ! "$2" =~ ^- ]]; then
+                    AUDIO_CODEC="$2"
+                    log_info "Audio codec: $AUDIO_CODEC"
+                    shift 2
+                else
+                    log_error "Missing audio codec argument"
+                    show_usage
+                    exit 1
+                fi
+                ;;
+            --quality)
+                if [[ -n "${2:-}" && ! "$2" =~ ^- ]]; then
+                    QUALITY_PARAM="$2"
+                    log_info "Quality setting: $QUALITY_PARAM"
+                    shift 2
+                else
+                    log_error "Missing quality argument"
+                    show_usage
+                    exit 1
+                fi
+                ;;
+            --preset)
+                if [[ -n "${2:-}" && ! "$2" =~ ^- ]]; then
+                    ENCODING_PRESET="$2"
+                    log_info "Encoding preset: $ENCODING_PRESET"
+                    shift 2
+                else
+                    log_error "Missing preset argument"
+                    show_usage
+                    exit 1
+                fi
+                ;;
+            --scale)
+                if [[ -n "${2:-}" && ! "$2" =~ ^- ]]; then
+                    SCALE_MODE="$2"
+                    log_info "Scale mode: $SCALE_MODE"
+                    shift 2
+                else
+                    log_error "Missing scale argument"
+                    show_usage
+                    exit 1
+                fi
+                ;;
+            --deinterlace)
+                DEINTERLACE=true
+                log_info "Deinterlacing enabled"
+                shift
+                ;;
+            --denoise)
+                DENOISE=true
+                log_info "Denoising enabled"
+                shift
+                ;;
+            --sharpen)
+                SHARPEN=true
+                log_info "Sharpening enabled"
+                shift
+                ;;
+            --subtitles)
+                if [[ -n "${2:-}" && ! "$2" =~ ^- ]]; then
+                    SUBTITLE_MODE="$2"
+                    log_info "Subtitle mode: $SUBTITLE_MODE"
+                    shift 2
+                else
+                    log_error "Missing subtitle mode argument"
+                    show_usage
+                    exit 1
+                fi
+                ;;
+            --metadata)
+                if [[ -n "${2:-}" && ! "$2" =~ ^- ]]; then
+                    METADATA_MODE="$2"
+                    log_info "Metadata mode: $METADATA_MODE"
+                    shift 2
+                else
+                    log_error "Missing metadata mode argument"
+                    show_usage
+                    exit 1
+                fi
+                ;;
+            --threads)
+                if [[ -n "${2:-}" && ! "$2" =~ ^- ]]; then
+                    THREAD_COUNT="$2"
+                    log_info "Thread count: $THREAD_COUNT"
+                    shift 2
+                else
+                    log_error "Missing thread count argument"
+                    show_usage
+                    exit 1
+                fi
+                ;;
+            --list-formats)
+                list_supported_formats
+                exit 0
+                ;;
+            --list-codecs)
+                list_supported_codecs
+                exit 0
+                ;;
             -h|--help)
                 show_usage
                 exit 0
@@ -104,15 +240,58 @@ OPTIONS:
     --nvenc         Force NVIDIA NVENC
     --vaapi         Force AMD/Intel VAAPI
     --qsv           Force Intel Quick Sync
+    --format        Specify output format (e.g., mp4, mkv, avi)
+    --codec         Force video codec (e.g., h264, hevc, av1)
+    --audio-codec   Force audio codec (e.g., aac, opus, flac)
+    --quality       Set quality parameter (e.g., 100, 200, 300)
+    --preset        Set encoding preset (e.g., fast, medium, high)
+    --scale         Set scaling mode (e.g., 1080p, 720p, 480p)
+    --deinterlace   Enable deinterlacing
+    --denoise       Enable denoising
+    --sharpen       Enable sharpening
+    --subtitles     Set subtitle mode (e.g., srt, ass, none)
+    --metadata      Set metadata mode (e.g., copy, remove, add)
+    --threads       Set thread count
+    --list-formats  List supported output formats
+    --list-codecs   List supported video/audio codecs
     -h, --help      Show this help
 
 DIRECTORY:
-    Target directory containing .mkv files (default: current directory)
+    Target directory containing video files (default: current directory)
 
 EXAMPLES:
     $0 /media/videos
     $0 --replace --debug .
     $0 --cpu /path/to/movies
+    $0 --format mp4 --codec h264 /path/to/videos
+    $0 --scale 1080p --deinterlace /path/to/videos
+    $0 --list-formats
+    $0 --list-codecs
+EOF
+}
+
+list_supported_formats() {
+    cat << EOF
+Supported Input Formats:
+$(printf "  %s\n" "${SUPPORTED_INPUT_EXTENSIONS[@]}")
+
+Supported Output Formats:
+$(printf "  %s\n" "${SUPPORTED_OUTPUT_FORMATS[@]}")
+
+Default Output Format: $DEFAULT_OUTPUT_FORMAT
+EOF
+}
+
+list_supported_codecs() {
+    cat << EOF
+Supported Video Codecs:
+$(printf "  %s\n" "${SUPPORTED_VIDEO_CODECS[@]}")
+
+Supported Audio Codecs:
+$(printf "  %s\n" "${SUPPORTED_AUDIO_CODECS[@]}")
+
+Default Video Codec: $DEFAULT_VIDEO_CODEC
+Default Audio Codec: $DEFAULT_AUDIO_CODEC
 EOF
 }
 
@@ -155,7 +334,8 @@ process_video_file() {
     if [[ "$REPLACE_SOURCE" == true ]]; then
         output_path="$file"
     else
-        output_path="${file%.*}-converted.mkv"
+        local base_name="${file%.*}"
+        output_path="${base_name}-converted.${OUTPUT_FORMAT}"
     fi
 
     if [[ "$DEBUG_MODE" == true ]]; then
@@ -183,37 +363,59 @@ process_video_file() {
 }
 
 process_all_files() {
-    local -a mkv_files=()
+    local -a video_files=()
 
-    log_debug "Searching for .mkv files in: $(pwd)"
+    log_debug "Searching for video files in: $(pwd)"
+
+    # Build search pattern for all supported formats
+    local search_pattern=""
+    for ext in "${SUPPORTED_INPUT_EXTENSIONS[@]}"; do
+        [[ -n "$search_pattern" ]] && search_pattern+=" -o"
+        search_pattern+=" -name \"*.$ext\""
+    done
 
     # macOS compatible file listing
     if [[ "$(uname)" == "Darwin" ]]; then
         # Use ls instead of find on macOS for better compatibility
-        while IFS= read -r file; do
-            [[ -f "$file" && "$file" == *.mkv ]] && mkv_files+=("$file")
-        done < <(ls -1 ./*.mkv 2>/dev/null || true)
+        for ext in "${SUPPORTED_INPUT_EXTENSIONS[@]}"; do
+            while IFS= read -r file; do
+                [[ -f "$file" ]] && video_files+=("$file")
+            done < <(ls -1 ./*."$ext" 2>/dev/null || true)
+        done
         log_debug "macOS file search completed"
     else
-        # Linux/other systems use mapfile with find
-        mapfile -t mkv_files < <(find . -maxdepth 1 -name "*.mkv" -type f 2>/dev/null)
+        # Linux/other systems use find with multiple extensions
+        local find_cmd="find . -maxdepth 1 -type f \("
+        local first=true
+        for ext in "${SUPPORTED_INPUT_EXTENSIONS[@]}"; do
+            if [[ "$first" == true ]]; then
+                find_cmd+=" -name \"*.$ext\""
+                first=false
+            else
+                find_cmd+=" -o -name \"*.$ext\""
+            fi
+        done
+        find_cmd+=" \)"
+        
+        mapfile -t video_files < <(eval "$find_cmd" 2>/dev/null)
         log_debug "Linux file search completed"
     fi
 
-    log_debug "Found ${#mkv_files[@]} .mkv files"
+    log_debug "Found ${#video_files[@]} video files"
 
-    local total_files=${#mkv_files[@]}
+    local total_files=${#video_files[@]}
 
     if [[ $total_files -eq 0 ]]; then
-        log_warn "No .mkv files found in: $(pwd)"
+        log_warn "No supported video files found in: $(pwd)"
+        log_info "Supported formats: ${SUPPORTED_INPUT_EXTENSIONS[*]}"
         return 0
     fi
 
-    log_info "Found $total_files .mkv file(s) in: $(pwd)"
+    log_info "Found $total_files video file(s) in: $(pwd)"
     echo
 
     local file
-    for file in "${mkv_files[@]}"; do
+    for file in "${video_files[@]}"; do
         process_video_file "$file"
         echo
     done

@@ -140,18 +140,22 @@ get_encoder_arguments() {
 
     args_array=()
 
+    # Select codec based on user preference or hardware capabilities
+    local selected_codec
+    select_video_codec "$encoder" "$is_10bit" selected_codec
+
     case "$encoder" in
         NVENC)
-            get_nvenc_arguments "$is_10bit" "$complexity" args_array
+            get_nvenc_arguments "$selected_codec" "$is_10bit" "$complexity" args_array
             ;;
         QSV)
-            get_qsv_arguments "$is_10bit" "$complexity" args_array
+            get_qsv_arguments "$selected_codec" "$is_10bit" "$complexity" args_array
             ;;
         VAAPI)
-            get_vaapi_arguments "$is_10bit" "$complexity" args_array
+            get_vaapi_arguments "$selected_codec" "$is_10bit" "$complexity" args_array
             ;;
         SOFTWARE)
-            get_software_arguments "$is_10bit" "$complexity" args_array
+            get_software_arguments "$selected_codec" "$is_10bit" "$complexity" args_array
             ;;
         *)
             log_error "Unknown encoder: $encoder"
@@ -159,17 +163,78 @@ get_encoder_arguments() {
             ;;
     esac
 
-    log_debug "Encoder arguments for $encoder: ${args_array[*]}"
+    log_debug "Encoder arguments for $encoder ($selected_codec): ${args_array[*]}"
+}
+
+# Select appropriate video codec based on encoder and capabilities
+# Args: encoder_name is_10bit output_codec_name
+select_video_codec() {
+    local encoder="$1"
+    local is_10bit="$2"
+    local -n selected_codec=$3
+
+    # Use user-specified codec if available
+    if [[ -n "${VIDEO_CODEC:-}" ]]; then
+        selected_codec="$VIDEO_CODEC"
+        return 0
+    fi
+
+    # Auto-select based on encoder capabilities
+    case "$encoder" in
+        NVENC)
+            if [[ "${ENCODER_CAPS[NVENC_AV1]:-}" == "true" ]]; then
+                selected_codec="av1"
+            else
+                selected_codec="hevc"
+            fi
+            ;;
+        QSV)
+            if [[ "${ENCODER_CAPS[QSV_AV1]:-}" == "true" ]]; then
+                selected_codec="av1"
+            else
+                selected_codec="hevc"
+            fi
+            ;;
+        VAAPI)
+            if [[ "${ENCODER_CAPS[VAAPI_AV1]:-}" == "true" ]]; then
+                selected_codec="av1"
+            else
+                selected_codec="hevc"
+            fi
+            ;;
+        SOFTWARE)
+            # Software encoding supports all codecs
+            selected_codec="hevc"
+            ;;
+        *)
+            selected_codec="hevc"
+            ;;
+    esac
 }
 
 # NVENC encoder arguments
-# Args: is_10bit complexity_level output_array_name
+# Args: codec is_10bit complexity_level output_array_name
 get_nvenc_arguments() {
-    local is_10bit="$1"
-    local complexity="$2"
-    local -n nvenc_args=$3
+    local codec="$1"
+    local is_10bit="$2"
+    local complexity="$3"
+    local -n nvenc_args=$4
 
-    nvenc_args+=("-c:v" "hevc_nvenc")
+    case "$codec" in
+        hevc)
+            nvenc_args+=("-c:v" "hevc_nvenc")
+            ;;
+        h264)
+            nvenc_args+=("-c:v" "h264_nvenc")
+            ;;
+        av1)
+            nvenc_args+=("-c:v" "av1_nvenc")
+            ;;
+        *)
+            log_warn "Unsupported codec for NVENC: $codec, falling back to HEVC"
+            nvenc_args+=("-c:v" "hevc_nvenc")
+            ;;
+    esac
 
     # Profile and pixel format
     if [[ "$is_10bit" == "true" && "${ENCODER_CAPS[NVENC_HEVC_10BIT]:-}" == "true" ]]; then
@@ -201,13 +266,28 @@ get_nvenc_arguments() {
 }
 
 # QSV encoder arguments
-# Args: is_10bit complexity_level output_array_name
+# Args: codec is_10bit complexity_level output_array_name
 get_qsv_arguments() {
-    local is_10bit="$1"
-    local complexity="$2"
-    local -n qsv_args=$3
+    local codec="$1"
+    local is_10bit="$2"
+    local complexity="$3"
+    local -n qsv_args=$4
 
-    qsv_args+=("-c:v" "hevc_qsv")
+    case "$codec" in
+        hevc)
+            qsv_args+=("-c:v" "hevc_qsv")
+            ;;
+        h264)
+            qsv_args+=("-c:v" "h264_qsv")
+            ;;
+        av1)
+            qsv_args+=("-c:v" "av1_qsv")
+            ;;
+        *)
+            log_warn "Unsupported codec for QSV: $codec, falling back to HEVC"
+            qsv_args+=("-c:v" "hevc_qsv")
+            ;;
+    esac
 
     # Profile setup
     if [[ "$is_10bit" == "true" && "${ENCODER_CAPS[QSV_HEVC_10BIT]:-}" == "true" ]]; then
@@ -233,19 +313,35 @@ get_qsv_arguments() {
 }
 
 # VAAPI encoder arguments
-# Args: is_10bit complexity_level output_array_name
+# Args: codec is_10bit complexity_level output_array_name
 get_vaapi_arguments() {
-    local is_10bit="$1"
-    local complexity="$2"
-    local -n vaapi_args=$3
+    local codec="$1"
+    local is_10bit="$2"
+    local complexity="$3"
+    local -n vaapi_args=$4
 
     local vaapi_device="${HW_DEVICES[VAAPI]:-/dev/dri/renderD128}"
 
     vaapi_args+=(
         "-init_hw_device" "vaapi=hw:$vaapi_device"
         "-filter_hw_device" "hw"
-        "-c:v" "hevc_vaapi"
     )
+
+    case "$codec" in
+        hevc)
+            vaapi_args+=("-c:v" "hevc_vaapi")
+            ;;
+        h264)
+            vaapi_args+=("-c:v" "h264_vaapi")
+            ;;
+        av1)
+            vaapi_args+=("-c:v" "av1_vaapi")
+            ;;
+        *)
+            log_warn "Unsupported codec for VAAPI: $codec, falling back to HEVC"
+            vaapi_args+=("-c:v" "hevc_vaapi")
+            ;;
+    esac
 
     # Pixel format and profile
     if [[ "$is_10bit" == "true" && "${ENCODER_CAPS[VAAPI_HEVC_10BIT]:-}" == "true" ]]; then
@@ -296,13 +392,31 @@ apply_vaapi_optimizations() {
 }
 
 # Software encoder arguments
-# Args: is_10bit complexity_level output_array_name
+# Args: codec is_10bit complexity_level output_array_name
 get_software_arguments() {
-    local is_10bit="$1"
-    local complexity="$2"
-    local -n sw_args=$3
+    local codec="$1"
+    local is_10bit="$2"
+    local complexity="$3"
+    local -n sw_args=$4
 
-    sw_args+=("-c:v" "libx265")
+    case "$codec" in
+        hevc)
+            sw_args+=("-c:v" "libx265")
+            ;;
+        h264)
+            sw_args+=("-c:v" "libx264")
+            ;;
+        av1)
+            sw_args+=("-c:v" "libaom-av1")
+            ;;
+        vp9)
+            sw_args+=("-c:v" "libvpx-vp9")
+            ;;
+        *)
+            log_warn "Unsupported codec for software encoding: $codec, falling back to HEVC"
+            sw_args+=("-c:v" "libx265")
+            ;;
+    esac
 
     # Pixel format and profile
     if [[ "$is_10bit" == "true" ]]; then
@@ -311,15 +425,51 @@ get_software_arguments() {
         sw_args+=("-profile:v" "main" "-pix_fmt" "yuv420p")
     fi
 
-    sw_args+=("-crf" "$QUALITY_PARAM")
+    # Quality settings
+    case "$codec" in
+        hevc)
+            sw_args+=("-crf" "$QUALITY_PARAM")
+            ;;
+        h264)
+            sw_args+=("-crf" "$QUALITY_PARAM")
+            ;;
+        av1)
+            sw_args+=("-crf" "$QUALITY_PARAM" "-b:v" "0")
+            ;;
+        vp9)
+            sw_args+=("-crf" "$QUALITY_PARAM" "-b:v" "0")
+            ;;
+    esac
 
     # CPU-optimized presets
-    configure_software_preset "$complexity" sw_args
+    configure_software_preset "$complexity" "$codec" sw_args
 }
 
 # Configure software encoding preset based on CPU and complexity
-# Args: complexity_level output_array_name
+# Args: complexity_level codec output_array_name
 configure_software_preset() {
+    local complexity="$1"
+    local codec="$2"
+    local -n preset_args=$3
+
+    case "$codec" in
+        hevc)
+            configure_x265_preset "$complexity" preset_args
+            ;;
+        h264)
+            configure_x264_preset "$complexity" preset_args
+            ;;
+        av1)
+            configure_av1_preset "$complexity" preset_args
+            ;;
+        vp9)
+            configure_vp9_preset "$complexity" preset_args
+            ;;
+    esac
+}
+
+# Configure x265 preset
+configure_x265_preset() {
     local complexity="$1"
     local -n preset_args=$2
 
@@ -346,6 +496,60 @@ configure_software_preset() {
         local numa_pools=$(((CPU_CORES + 7) / 8))
         preset_args+=("-x265-params" "pools=+:numa-pools=$numa_pools")
     fi
+}
+
+# Configure x264 preset
+configure_x264_preset() {
+    local complexity="$1"
+    local -n preset_args=$2
+
+    case "$complexity" in
+        high)
+            preset_args+=("-preset" "slow" "-tune" "film")
+            ;;
+        medium)
+            preset_args+=("-preset" "medium" "-tune" "film")
+            ;;
+        *)
+            preset_args+=("-preset" "fast" "-tune" "film")
+            ;;
+    esac
+}
+
+# Configure AV1 preset
+configure_av1_preset() {
+    local complexity="$1"
+    local -n preset_args=$2
+
+    case "$complexity" in
+        high)
+            preset_args+=("-cpu-used" "2" "-row-mt" "1" "-tile-columns" "2")
+            ;;
+        medium)
+            preset_args+=("-cpu-used" "4" "-row-mt" "1" "-tile-columns" "1")
+            ;;
+        *)
+            preset_args+=("-cpu-used" "6" "-row-mt" "1")
+            ;;
+    esac
+}
+
+# Configure VP9 preset
+configure_vp9_preset() {
+    local complexity="$1"
+    local -n preset_args=$2
+
+    case "$complexity" in
+        high)
+            preset_args+=("-cpu-used" "0" "-row-mt" "1" "-tile-columns" "2")
+            ;;
+        medium)
+            preset_args+=("-cpu-used" "2" "-row-mt" "1" "-tile-columns" "1")
+            ;;
+        *)
+            preset_args+=("-cpu-used" "4" "-row-mt" "1")
+            ;;
+    esac
 }
 
 # Get the currently selected encoder name

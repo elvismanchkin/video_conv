@@ -118,7 +118,7 @@ validate_directory() {
         log_error "Cannot access directory: $dir"
         return 1
     fi
-
+    
     return 0
 }
 

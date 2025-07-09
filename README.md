@@ -102,6 +102,33 @@ sudo pacman -S ffmpeg libva-utils jq libva-mesa-driver
 # NVIDIA: sudo pacman -S nvidia-utils
 ```
 
+**macOS (Intel):**
+```bash
+# Install Homebrew if not already installed
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Install required tools
+brew install ffmpeg jq
+
+# Note: Hardware acceleration limited on Intel Macs
+# Software encoding recommended for best quality
+```
+
+**macOS (Apple Silicon/ARM):**
+```bash
+# Install Homebrew if not already installed
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Install required tools
+brew install ffmpeg jq
+
+# Apple Silicon Notes:
+# - Hardware acceleration available through VideoToolbox
+# - Excellent performance with software encoding
+# - 10-bit HEVC encoding supported natively
+# - Consider using --cpu for maximum quality
+```
+
 ## Usage
 
 ### Basic Syntax
@@ -190,6 +217,12 @@ Edit `config/defaults.conf` to modify:
 - RTX 30/40 series support AV1 encoding
 - Requires proper driver installation
 
+### Apple Silicon (macOS)
+- Excellent software encoding performance
+- Native 10-bit HEVC support
+- VideoToolbox hardware acceleration available
+- Recommended: Use `--cpu` for maximum quality
+
 ## Troubleshooting
 
 ### Hardware Detection Issues
@@ -224,6 +257,18 @@ cvrt --debug
 # Will report missing tools and suggest installation commands
 ```
 
+### Development Environment Issues
+```bash
+# Install development tools
+./dev-tools.sh help
+
+# Check if ShellCheck is available
+./dev-tools.sh shellcheck
+
+# Format code automatically
+./dev-tools.sh format
+```
+
 ## Output Format
 
 The refactored script provides cleaner, more informative output:
@@ -246,6 +291,62 @@ The refactored script provides cleaner, more informative output:
 
 ## Development
 
+### Development Tools Setup
+
+The project includes a comprehensive development toolkit for code quality and testing:
+
+```bash
+# Make development tools executable
+chmod +x dev-tools.sh
+
+# Run all quality checks
+./dev-tools.sh all
+
+# Check specific issues
+./dev-tools.sh shellcheck    # Static analysis
+./dev-tools.sh syntax        # Bash syntax validation
+./dev-tools.sh whitespace    # Trailing whitespace check
+./dev-tools.sh newlines      # Missing final newlines
+./dev-tools.sh format        # Auto-format code
+./dev-tools.sh test          # Basic functionality tests
+```
+
+### Required Development Tools
+
+**ShellCheck (Static Analysis):**
+```bash
+# Ubuntu/Debian
+sudo apt install shellcheck
+
+# Fedora/RHEL
+sudo dnf install ShellCheck
+
+# Arch Linux
+sudo pacman -S shellcheck
+
+# macOS
+brew install shellcheck
+```
+
+**Additional Development Tools (Optional):**
+```bash
+# Code formatting and linting
+npm install -g prettier
+npm install -g markdownlint-cli
+
+# Git hooks (pre-commit)
+pip install pre-commit
+```
+
+### Code Quality Standards
+
+The project follows these coding standards:
+- **Bash Best Practices**: Proper error handling, variable quoting, associative arrays
+- **Modular Design**: Clean separation of concerns across library files
+- **Cross-Platform Compatibility**: Works on Linux, macOS (Intel/ARM)
+- **Error Handling**: Comprehensive error checking and graceful fallbacks
+- **Documentation**: Clear inline comments and comprehensive README
+
 ### Testing Individual Components
 ```bash
 # Test hardware detection only
@@ -262,6 +363,31 @@ analyze_video_file "test.mkv" info
 1. Add capability detection in `lib/hardware.sh`
 2. Add encoder configuration in `lib/encoders.sh`
 3. Update scoring in `config/defaults.conf`
+4. Add tests in `dev-tools.sh`
+5. Update documentation
+
+### Continuous Integration
+
+The project includes GitHub Actions workflows for automated testing:
+- **ShellCheck**: Static analysis of all shell scripts
+- **Syntax Check**: Bash syntax validation
+- **Basic Tests**: Functionality verification
+- **Code Quality**: Trailing whitespace and newline checks
+
+### Project Structure for Developers
+
+```
+video-converter/
+├── .github/workflows/     # CI/CD pipelines
+├── .shellcheckrc         # ShellCheck configuration
+├── .editorconfig         # Editor consistency
+├── .gitignore           # Git exclusions
+├── dev-tools.sh         # Development utilities
+├── config/              # Configuration files
+├── lib/                 # Core library modules
+├── cvrt.sh             # Main script
+└── README.md           # Documentation
+```
 
 ## Safety Features
 
@@ -280,3 +406,27 @@ analyze_video_file "test.mkv" info
 - The script uses symlink-aware path resolution, so it works correctly even when called through symlinks from system PATH directories
 - All library and configuration files are automatically located relative to the actual script location
 - Compatible with bash 3.2+ (including older macOS systems)
+- Cross-platform support: Linux (x86_64, ARM), macOS (Intel, Apple Silicon)
+- Development tools included for code quality maintenance
+
+## Contributing
+
+1. **Fork the repository**
+2. **Create a feature branch**: `git checkout -b feature/amazing-feature`
+3. **Make your changes** following the coding standards
+4. **Run quality checks**: `./dev-tools.sh all`
+5. **Test your changes**: `./dev-tools.sh test`
+6. **Commit your changes**: `git commit -m 'Add amazing feature'`
+7. **Push to the branch**: `git push origin feature/amazing-feature`
+8. **Open a Pull Request**
+
+### Code Quality Checklist
+
+Before submitting changes, ensure:
+- [ ] All scripts pass ShellCheck: `./dev-tools.sh shellcheck`
+- [ ] Bash syntax is valid: `./dev-tools.sh syntax`
+- [ ] No trailing whitespace: `./dev-tools.sh whitespace`
+- [ ] All files have final newlines: `./dev-tools.sh newlines`
+- [ ] Basic tests pass: `./dev-tools.sh test`
+- [ ] Documentation is updated
+- [ ] Cross-platform compatibility maintained

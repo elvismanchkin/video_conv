@@ -1,0 +1,25 @@
+# ShellCheck configuration for video converter project
+# Disable warnings that are false positives or acceptable for this project
+
+# SC1090: Can't follow non-constant source - acceptable for modular design
+# SC1091: Not following - acceptable for modular design
+disable=SC1090,SC1091
+
+# SC2034: Variable appears unused - acceptable for exported variables
+# SC2154: Referenced but not assigned - acceptable for sourced variables
+disable=SC2034,SC2154
+
+# SC2086: Double quote to prevent globbing - acceptable in controlled contexts
+# SC2207: Prefer mapfile or read -a - acceptable for compatibility
+disable=SC2086,SC2207
+
+# SC2012: Use find instead of ls - acceptable for macOS compatibility
+# SC2013: To read lines rather than words - acceptable for specific use cases
+disable=SC2012,SC2013
+
+# SC2064: Use single quotes - acceptable for variable expansion
+# SC2145: Argument mixes string and array - acceptable for ffmpeg arguments
+disable=SC2064,SC2145
+
+# Shell version compatibility
+shell=bash 

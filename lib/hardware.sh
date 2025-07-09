@@ -3,7 +3,7 @@
 # Hardware Detection and Capabilities
 # Compatible with bash 3.2+ and common Linux tools
 
-# Initialize all hardware capability variables
+# Initialize hardware capability variables
 NVENC_AVAILABLE=false
 VAAPI_AVAILABLE=false
 QSV_AVAILABLE=false
@@ -47,13 +47,11 @@ SELECTED_ENCODER=""
 detect_cpu_info() {
     log_debug "Detecting CPU information"
 
-    # Get CPU model name
     local cpu_model=""
     if [[ -f "/proc/cpuinfo" ]]; then
         cpu_model=$(grep -m1 "model name" /proc/cpuinfo | cut -d: -f2 | sed 's/^[ \t]*//')
     fi
 
-    # Get CPU core count
     if command -v nproc >/dev/null 2>&1; then
         CPU_CORES=$(nproc)
     elif [[ -f "/proc/cpuinfo" ]]; then
@@ -62,7 +60,6 @@ detect_cpu_info() {
         CPU_CORES=1
     fi
 
-    # Detect CPU vendor
     if [[ "$cpu_model" == *"Intel"* ]]; then
         CPU_VENDOR="Intel"
     elif [[ "$cpu_model" == *"AMD"* ]]; then
@@ -85,7 +82,6 @@ detect_cpu_info() {
 detect_gpu_hardware() {
     log_debug "Detecting GPU hardware"
 
-    # Use lspci to detect GPU hardware
     if command -v lspci >/dev/null 2>&1; then
         local gpu_info
         gpu_info=$(lspci | grep -i "vga\|3d\|display")
@@ -94,7 +90,6 @@ detect_gpu_hardware() {
             GPU_INFO="$gpu_info"
             log_debug "GPU found: $gpu_info"
 
-            # Detect specific GPU vendors
             if echo "$gpu_info" | grep -qi "nvidia"; then
                 log_debug "NVIDIA GPU detected"
                 SYSTEM_TYPE="NVIDIA"
@@ -129,7 +124,6 @@ detect_gpu_hardware() {
 test_vaapi_support() {
     log_debug "Testing VAAPI support"
 
-    # Check for VAAPI devices
     local vaapi_devices=()
     if [[ -d "/dev/dri" ]]; then
         while IFS= read -r -d '' device; do
@@ -142,17 +136,14 @@ test_vaapi_support() {
         return 1
     fi
 
-    # Test each VAAPI device
     for device in "${vaapi_devices[@]}"; do
         log_debug "Testing VAAPI device: $device"
 
-        # Check device permissions
         if [[ ! -r "$device" ]]; then
             log_debug "No read access to $device"
             continue
         fi
 
-        # Test with vainfo if available
         if command -v vainfo >/dev/null 2>&1; then
             if vainfo --display drm --device "$device" >/dev/null 2>&1; then
                 log_debug "VAAPI working on $device"

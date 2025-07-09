@@ -3,7 +3,10 @@
 # GPU Video Converter - Main Script
 # Self-contained video converter with hardware acceleration
 
-set -euo pipefail
+# Start with basic error handling
+set -uo pipefail
+# Enable full error tracing if debug mode is set via environment
+[[ "${CVRT_DEBUG:-}" == "true" ]] && set -x
 
 # Resolve symlinks to find the actual script directory
 SCRIPT_SOURCE="${BASH_SOURCE[0]}"
@@ -155,6 +158,12 @@ process_video_file() {
         output_path="${file%.*}-converted.mkv"
     fi
 
+    if [[ "$DEBUG_MODE" == true ]]; then
+        log_debug "File details: codec=${file_info[codec]}, width=${file_info[width]}, height=${file_info[height]}"
+        log_debug "Selected encoder: $(get_selected_encoder)"
+        log_debug "Output path: $output_path"
+    fi
+
     if process_with_encoder "$file" "$output_path" file_info; then
         increment_stat success
         if [[ "$REPLACE_SOURCE" == true ]]; then
@@ -165,14 +174,33 @@ process_video_file() {
     else
         increment_stat failed
         log_error "    [FAILED] Encoding failed"
+        if [[ "$DEBUG_MODE" == true ]]; then
+            log_debug "Check encoder settings and hardware compatibility"
+        fi
     fi
 
     return 0
 }
 
 process_all_files() {
-    local -a mkv_files
-    mapfile -t mkv_files < <(find . -maxdepth 1 -name "*.mkv" -type f 2>/dev/null)
+    local -a mkv_files=()
+
+    log_debug "Searching for .mkv files in: $(pwd)"
+
+    # macOS compatible file listing
+    if [[ "$(uname)" == "Darwin" ]]; then
+        # Use ls instead of find on macOS for better compatibility
+        while IFS= read -r file; do
+            [[ -f "$file" && "$file" == *.mkv ]] && mkv_files+=("$file")
+        done < <(ls -1 ./*.mkv 2>/dev/null || true)
+        log_debug "macOS file search completed"
+    else
+        # Linux/other systems use mapfile with find
+        mapfile -t mkv_files < <(find . -maxdepth 1 -name "*.mkv" -type f 2>/dev/null)
+        log_debug "Linux file search completed"
+    fi
+
+    log_debug "Found ${#mkv_files[@]} .mkv files"
 
     local total_files=${#mkv_files[@]}
 
@@ -217,16 +245,36 @@ show_final_stats() {
 main() {
     log_info "GPU Video Converter v8.0"
 
+    # Robust error handling in main function
+    set +e
+    trap 'log_error "Script error at line $LINENO"; exit 1' ERR
+
     parse_arguments "$@"
 
     check_dependencies || exit 1
     validate_directory "$WORK_DIR" || exit 1
 
     log_info "Detecting hardware capabilities..."
-    detect_all_hardware
+    if ! detect_all_hardware; then
+        log_warn "Hardware detection had issues, but continuing with available options"
+    fi
 
-    select_best_encoder "$FORCE_ENCODER"
+    select_best_encoder "$FORCE_ENCODER" || {
+        log_error "Failed to select encoder"
+        return 1
+    }
+
     display_hardware_summary
+
+    # Check if we have a valid encoder selected
+    if [[ -z "$(get_selected_encoder)" ]]; then
+        log_error "No valid encoder selected"
+        return 1
+    fi
+
+    if [[ "$DEBUG_MODE" == true ]]; then
+        log_debug "Starting file processing with encoder: $(get_selected_encoder)"
+    fi
 
     process_all_files
 

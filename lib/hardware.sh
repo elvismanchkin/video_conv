@@ -1,9 +1,14 @@
 #!/bin/bash
 
-# Global hardware state
-HW_SUPPORT=()
-HW_DEVICES=()
-ENCODER_CAPS=()
+# Global hardware state - using simple variables for bash 3.2 compatibility
+HW_AMD_INTEGRATED=""
+HW_INTEL_INTEGRATED=""
+HW_NVIDIA_GPU=""
+HW_AMD_GPU=""
+HW_INTEL_ARC=""
+HW_VAAPI_SUPPORT=""
+HW_QSV_SUPPORT=""
+HW_NVENC_SUPPORT=""
 CPU_VENDOR=""
 CPU_CORES=""
 CPU_MODEL=""
@@ -22,7 +27,7 @@ detect_cpu_info() {
 
         # AMD APU detection (integrated graphics)
         if echo "$CPU_MODEL" | grep -qi "G\|APU\|PRO.*G\|GE\|Ryzen.*[0-9]G"; then
-            HW_SUPPORT["AMD_INTEGRATED"]="true"
+            HW_AMD_INTEGRATED="true"
             log_debug "AMD APU detected: $CPU_MODEL"
         fi
 
@@ -32,7 +37,7 @@ detect_cpu_info() {
 
         # Intel integrated graphics detection
         if lspci 2>/dev/null | grep -qi "Intel.*Graphics\|Intel.*Display\|Intel.*UHD\|Intel.*Iris"; then
-            HW_SUPPORT["INTEL_INTEGRATED"]="true"
+            HW_INTEL_INTEGRATED="true"
             log_debug "Intel iGPU detected: $CPU_MODEL"
         fi
     else

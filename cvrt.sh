@@ -16,15 +16,32 @@ source "${LIB_DIR}/encoders.sh"
 source "${LIB_DIR}/video_analysis.sh"
 source "${LIB_DIR}/audio_processing.sh"
 
-declare -g WORK_DIR="."
-declare -g REPLACE_SOURCE=false
-declare -g DEBUG_MODE=false
-declare -g FORCE_ENCODER=""
-declare -g -A STATS=(
-    [success]=0
-    [failed]=0
-    [skipped]=0
-)
+WORK_DIR="."
+REPLACE_SOURCE=false
+DEBUG_MODE=false
+FORCE_ENCODER=""
+# Using function approach for STATS to be compatible with bash 3.2
+get_stat() {
+    case "$1" in
+        success) echo "${STATS_SUCCESS:-0}" ;;
+        failed) echo "${STATS_FAILED:-0}" ;;
+        skipped) echo "${STATS_SKIPPED:-0}" ;;
+    esac
+}
+set_stat() {
+    case "$1" in
+        success) STATS_SUCCESS="$2" ;;
+        failed) STATS_FAILED="$2" ;;
+        skipped) STATS_SKIPPED="$2" ;;
+    esac
+}
+increment_stat() {
+    local current=$(get_stat "$1")
+    set_stat "$1" $((current + 1))
+}
+STATS_SUCCESS=0
+STATS_FAILED=0
+STATS_SKIPPED=0
 
 parse_arguments() {
     while [[ $# -gt 0 ]]; do
@@ -101,7 +118,7 @@ validate_directory() {
         log_error "Cannot access directory: $dir"
         return 1
     fi
-
+    
     return 0
 }
 
@@ -113,7 +130,7 @@ process_video_file() {
 
     if ! analyze_video_file "$file" file_info; then
         log_error "Failed to analyze: $file"
-        ((STATS[failed]++))
+        increment_stat failed
         return 1
     fi
 
@@ -132,14 +149,14 @@ process_video_file() {
     fi
 
     if process_with_encoder "$file" "$output_path" file_info; then
-        ((STATS[success]++))
+        increment_stat success
         if [[ "$REPLACE_SOURCE" == true ]]; then
             log_info "    [SUCCESS] Replaced original"
         else
             log_info "    [SUCCESS] Created: $(basename "$output_path")"
         fi
     else
-        ((STATS[failed]++))
+        increment_stat failed
         log_error "    [FAILED] Encoding failed"
     fi
 
@@ -168,21 +185,24 @@ process_all_files() {
 }
 
 show_final_stats() {
-    local total=$((STATS[success] + STATS[failed] + STATS[skipped]))
+    local success_count=$(get_stat success)
+    local failed_count=$(get_stat failed)
+    local skipped_count=$(get_stat skipped)
+    local total=$((success_count + failed_count + skipped_count))
 
     printf "\n[RESULTS] Success: %d | Failed: %d | Skipped: %d | Total: %d\n" \
-        "${STATS[success]}" \
-        "${STATS[failed]}" \
-        "${STATS[skipped]}" \
+        "$success_count" \
+        "$failed_count" \
+        "$skipped_count" \
         "$total"
 
-    if [[ ${STATS[success]} -gt 0 ]]; then
+    if [[ $success_count -gt 0 ]]; then
         local encoder_used
         encoder_used=$(get_selected_encoder)
         log_info "Conversion completed using: $encoder_used"
     fi
 
-    if [[ ${STATS[failed]} -gt 0 ]]; then
+    if [[ $failed_count -gt 0 ]]; then
         log_warn "Some files failed. Run with --debug for details."
     fi
 }

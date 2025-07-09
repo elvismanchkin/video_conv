@@ -8,8 +8,32 @@ NVENC_AVAILABLE=false
 VAAPI_AVAILABLE=false
 QSV_AVAILABLE=false
 CPU_CORES=0
+CPU_VENDOR=""
 GPU_INFO=""
 SYSTEM_TYPE=""
+
+# Initialize encoder capabilities array
+declare -A ENCODER_CAPS
+ENCODER_CAPS[NVENC_HEVC_10BIT]="false"
+ENCODER_CAPS[NVENC_AV1]="false"
+ENCODER_CAPS[QSV_HEVC_10BIT]="false"
+ENCODER_CAPS[QSV_AV1]="false"
+ENCODER_CAPS[VAAPI_HEVC_10BIT]="false"
+ENCODER_CAPS[VAAPI_AV1]="false"
+
+# Initialize hardware devices array
+declare -A HW_DEVICES
+HW_DEVICES[VAAPI]="/dev/dri/renderD128"
+HW_DEVICES[NVENC]=""
+HW_DEVICES[QSV]=""
+
+# Initialize hardware support array
+declare -A HW_SUPPORT
+HW_SUPPORT[AMD_DISCRETE]="false"
+HW_SUPPORT[AMD_INTEGRATED]="false"
+HW_SUPPORT[INTEL_DISCRETE]="false"
+HW_SUPPORT[INTEL_INTEGRATED]="false"
+HW_SUPPORT[NVIDIA_DISCRETE]="false"
 
 # Hardware capability scoring (higher = better)
 NVENC_SCORE=100
@@ -38,10 +62,20 @@ detect_cpu_info() {
         CPU_CORES=1
     fi
 
+    # Detect CPU vendor
+    if [[ "$cpu_model" == *"Intel"* ]]; then
+        CPU_VENDOR="Intel"
+    elif [[ "$cpu_model" == *"AMD"* ]]; then
+        CPU_VENDOR="AMD"
+    else
+        CPU_VENDOR="Unknown"
+    fi
+
     # Detect AMD APU
     if [[ "$cpu_model" == *"AMD"* && "$cpu_model" == *"Radeon"* ]]; then
         log_debug "AMD APU detected: $cpu_model"
         SYSTEM_TYPE="AMD_APU"
+        HW_SUPPORT[AMD_INTEGRATED]="true"
     fi
 
     log_debug "CPU: $cpu_model ($CPU_CORES cores)"
@@ -64,12 +98,23 @@ detect_gpu_hardware() {
             if echo "$gpu_info" | grep -qi "nvidia"; then
                 log_debug "NVIDIA GPU detected"
                 SYSTEM_TYPE="NVIDIA"
+                HW_SUPPORT[NVIDIA_DISCRETE]="true"
             elif echo "$gpu_info" | grep -qi "amd\|ati"; then
                 log_debug "AMD GPU detected"
                 [[ -z "$SYSTEM_TYPE" ]] && SYSTEM_TYPE="AMD_GPU"
+                if echo "$gpu_info" | grep -qi "radeon"; then
+                    HW_SUPPORT[AMD_INTEGRATED]="true"
+                else
+                    HW_SUPPORT[AMD_DISCRETE]="true"
+                fi
             elif echo "$gpu_info" | grep -qi "intel"; then
                 log_debug "Intel GPU detected"
                 SYSTEM_TYPE="INTEL"
+                if echo "$gpu_info" | grep -qi "arc\|xe"; then
+                    HW_SUPPORT[INTEL_DISCRETE]="true"
+                else
+                    HW_SUPPORT[INTEL_INTEGRATED]="true"
+                fi
             fi
         else
             log_debug "No discrete GPU found"
@@ -112,6 +157,8 @@ test_vaapi_support() {
             if vainfo --display drm --device "$device" >/dev/null 2>&1; then
                 log_debug "VAAPI working on $device"
                 VAAPI_AVAILABLE=true
+                HW_DEVICES[VAAPI]="$device"
+                detect_vaapi_capabilities "$device"
                 return 0
             else
                 log_debug "VAAPI test failed on $device"
@@ -120,12 +167,66 @@ test_vaapi_support() {
             # If vainfo is not available, assume it works if device exists
             log_debug "vainfo not available, assuming VAAPI works"
             VAAPI_AVAILABLE=true
+            HW_DEVICES[VAAPI]="$device"
+            detect_vaapi_capabilities "$device"
             return 0
         fi
     done
 
     log_debug "No working VAAPI devices found"
     return 1
+}
+
+# Detect NVENC encoder capabilities
+detect_nvenc_capabilities() {
+    log_debug "Detecting NVENC capabilities"
+
+    # Check for HEVC 10-bit support (assume available on modern cards)
+    ENCODER_CAPS[NVENC_HEVC_10BIT]="true"
+
+    # Check for AV1 support (RTX 40 series and newer)
+    if command -v nvidia-smi >/dev/null 2>&1; then
+        local gpu_name
+        gpu_name=$(nvidia-smi --query-gpu=name --format=csv,noheader,nounits 2>/dev/null | head -1)
+        if [[ "$gpu_name" == *"RTX 40"* || "$gpu_name" == *"RTX 50"* ]]; then
+            ENCODER_CAPS[NVENC_AV1]="true"
+        fi
+    fi
+}
+
+# Detect QSV encoder capabilities
+detect_qsv_capabilities() {
+    log_debug "Detecting QSV capabilities"
+
+    # Most modern Intel GPUs support HEVC 10-bit
+    ENCODER_CAPS[QSV_HEVC_10BIT]="true"
+
+    # AV1 support on Intel Arc and newer
+    if [[ "$GPU_INFO" == *"Arc"* || "$GPU_INFO" == *"Xe"* ]]; then
+        ENCODER_CAPS[QSV_AV1]="true"
+    fi
+}
+
+# Detect VAAPI encoder capabilities
+detect_vaapi_capabilities() {
+    local device="$1"
+    log_debug "Detecting VAAPI capabilities for $device"
+
+    # Test for HEVC 10-bit support
+    if command -v vainfo >/dev/null 2>&1; then
+        if vainfo --display drm --device "$device" 2>/dev/null | grep -q "VAProfileHEVCMain10"; then
+            ENCODER_CAPS[VAAPI_HEVC_10BIT]="true"
+        fi
+
+        # Test for AV1 support
+        if vainfo --display drm --device "$device" 2>/dev/null | grep -q "VAProfileAV1"; then
+            ENCODER_CAPS[VAAPI_AV1]="true"
+        fi
+    else
+        # Conservative defaults when vainfo is not available
+        ENCODER_CAPS[VAAPI_HEVC_10BIT]="false"
+        ENCODER_CAPS[VAAPI_AV1]="false"
+    fi
 }
 
 test_nvenc_support() {
@@ -142,6 +243,7 @@ test_nvenc_support() {
         if nvidia-smi >/dev/null 2>&1; then
             log_debug "NVIDIA driver working"
             NVENC_AVAILABLE=true
+            detect_nvenc_capabilities
             return 0
         else
             log_debug "NVIDIA driver not responding"
@@ -154,6 +256,7 @@ test_nvenc_support() {
     if [[ -c "/dev/nvidia0" ]]; then
         log_debug "NVIDIA device found, assuming NVENC available"
         NVENC_AVAILABLE=true
+        detect_nvenc_capabilities
         return 0
     fi
 
@@ -178,6 +281,7 @@ test_qsv_support() {
         if [[ -n "$intel_devices" ]]; then
             log_debug "Intel render devices found"
             QSV_AVAILABLE=true
+            detect_qsv_capabilities
             return 0
         fi
     fi
@@ -194,8 +298,29 @@ detect_all_hardware() {
     VAAPI_AVAILABLE=false
     QSV_AVAILABLE=false
     CPU_CORES=0
+    CPU_VENDOR=""
     GPU_INFO=""
     SYSTEM_TYPE=""
+
+    # Reset encoder capabilities
+    ENCODER_CAPS[NVENC_HEVC_10BIT]="false"
+    ENCODER_CAPS[NVENC_AV1]="false"
+    ENCODER_CAPS[QSV_HEVC_10BIT]="false"
+    ENCODER_CAPS[QSV_AV1]="false"
+    ENCODER_CAPS[VAAPI_HEVC_10BIT]="false"
+    ENCODER_CAPS[VAAPI_AV1]="false"
+
+    # Reset hardware devices
+    HW_DEVICES[VAAPI]="/dev/dri/renderD128"
+    HW_DEVICES[NVENC]=""
+    HW_DEVICES[QSV]=""
+
+    # Reset hardware support
+    HW_SUPPORT[AMD_DISCRETE]="false"
+    HW_SUPPORT[AMD_INTEGRATED]="false"
+    HW_SUPPORT[INTEL_DISCRETE]="false"
+    HW_SUPPORT[INTEL_INTEGRATED]="false"
+    HW_SUPPORT[NVIDIA_DISCRETE]="false"
 
     # Detect hardware components
     detect_cpu_info
@@ -208,6 +333,30 @@ detect_all_hardware() {
 
     log_debug "Hardware detection completed"
     return 0
+}
+
+# Check if a specific encoder is available
+# Args: encoder_name
+is_encoder_available() {
+    local encoder="$1"
+
+    case "$encoder" in
+        "NVENC")
+            [[ "$NVENC_AVAILABLE" == true ]]
+            ;;
+        "VAAPI")
+            [[ "$VAAPI_AVAILABLE" == true ]]
+            ;;
+        "QSV")
+            [[ "$QSV_AVAILABLE" == true ]]
+            ;;
+        "SOFTWARE"|"CPU")
+            return 0  # Software encoding is always available
+            ;;
+        *)
+            return 1
+            ;;
+    esac
 }
 
 get_encoder_score() {
@@ -223,7 +372,7 @@ get_encoder_score() {
         "QSV")
             echo "$QSV_SCORE"
             ;;
-        "CPU")
+        "CPU"|"SOFTWARE")
             echo "$CPU_SCORE"
             ;;
         *)
@@ -232,102 +381,7 @@ get_encoder_score() {
     esac
 }
 
-select_best_encoder() {
-    local force_encoder="$1"
 
-    log_debug "Selecting encoder (forced: ${force_encoder:-none})"
-
-    # Handle forced encoder selection
-    if [[ -n "$force_encoder" ]]; then
-        case "$force_encoder" in
-            "NVENC")
-                if [[ "$NVENC_AVAILABLE" == true ]]; then
-                    SELECTED_ENCODER="NVENC"
-                    log_info "Forced encoder selected: NVENC"
-                    return 0
-                else
-                    log_error "NVENC forced but not available"
-                    return 1
-                fi
-                ;;
-            "VAAPI")
-                if [[ "$VAAPI_AVAILABLE" == true ]]; then
-                    SELECTED_ENCODER="VAAPI"
-                    log_info "Forced encoder selected: VAAPI"
-                    return 0
-                else
-                    log_error "VAAPI forced but not available"
-                    return 1
-                fi
-                ;;
-            "QSV")
-                if [[ "$QSV_AVAILABLE" == true ]]; then
-                    SELECTED_ENCODER="QSV"
-                    log_info "Forced encoder selected: QSV"
-                    return 0
-                else
-                    log_error "QSV forced but not available"
-                    return 1
-                fi
-                ;;
-            "CPU")
-                SELECTED_ENCODER="CPU"
-                log_info "Forced encoder selected: CPU"
-                return 0
-                ;;
-            "GPU")
-                # Auto-select best GPU encoder
-                force_encoder=""
-                ;;
-            *)
-                log_error "Unknown forced encoder: $force_encoder"
-                return 1
-                ;;
-        esac
-    fi
-
-    # Auto-select best available encoder
-    local best_encoder=""
-    local best_score=0
-
-    # Check available encoders and their scores
-    if [[ "$NVENC_AVAILABLE" == true ]]; then
-        local score
-        score=$(get_encoder_score "NVENC")
-        if [[ $score -gt $best_score ]]; then
-            best_score=$score
-            best_encoder="NVENC"
-        fi
-    fi
-
-    if [[ "$VAAPI_AVAILABLE" == true ]]; then
-        local score
-        score=$(get_encoder_score "VAAPI")
-        if [[ $score -gt $best_score ]]; then
-            best_score=$score
-            best_encoder="VAAPI"
-        fi
-    fi
-
-    if [[ "$QSV_AVAILABLE" == true ]]; then
-        local score
-        score=$(get_encoder_score "QSV")
-        if [[ $score -gt $best_score ]]; then
-            best_score=$score
-            best_encoder="QSV"
-        fi
-    fi
-
-    # CPU is always available as fallback
-    if [[ -z "$best_encoder" ]]; then
-        best_encoder="CPU"
-        best_score=$(get_encoder_score "CPU")
-    fi
-
-    SELECTED_ENCODER="$best_encoder"
-    log_info "Selected encoder: $SELECTED_ENCODER (score: $best_score)"
-    return 0
-}
 
 get_selected_encoder() {
     echo "$SELECTED_ENCODER"
@@ -355,7 +409,7 @@ display_hardware_summary() {
     [[ "$QSV_AVAILABLE" == true ]] && encoders+=("QSV")
     encoders+=("CPU")
 
-    printf "[ENCODERS] Available: %s\n" "$(IFS=', '; echo "${encoders[*]}")"
+    printf "[ENCODERS] Available: %s\n" "$(IFS=,; echo "${encoders[*]}")"
 
     if [[ -n "$SELECTED_ENCODER" ]]; then
         printf "[SELECTED] Using: %s\n" "$SELECTED_ENCODER"

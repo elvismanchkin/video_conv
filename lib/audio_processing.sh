@@ -42,8 +42,10 @@ process_with_audio_conversion() {
 
     # Cleanup function
     cleanup_temp_dir() {
-        rm -rf "$temp_dir"
-        log_debug "Cleaned up temporary directory: $temp_dir"
+        if [[ -n "${temp_dir:-}" ]]; then
+            rm -rf "$temp_dir"
+            log_debug "Cleaned up temporary directory: $temp_dir"
+        fi
     }
     trap cleanup_temp_dir EXIT
 

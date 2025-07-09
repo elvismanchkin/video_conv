@@ -21,6 +21,8 @@ select_best_encoder() {
     if [[ -n "$FALLBACK_ENCODER" ]]; then
         log_debug "Fallback encoder: $FALLBACK_ENCODER"
     fi
+
+    return 0
 }
 
 select_forced_encoder() {
@@ -28,11 +30,11 @@ select_forced_encoder() {
 
     case "$encoder" in
         GPU)
-            if is_encoder_available "NVENC"; then
+            if [[ "$NVENC_AVAILABLE" == true ]]; then
                 SELECTED_ENCODER="NVENC"
-            elif is_encoder_available "QSV"; then
+            elif [[ "$QSV_AVAILABLE" == true ]]; then
                 SELECTED_ENCODER="QSV"
-            elif is_encoder_available "VAAPI"; then
+            elif [[ "$VAAPI_AVAILABLE" == true ]]; then
                 SELECTED_ENCODER="VAAPI"
             else
                 log_warn "No GPU encoder available, using SOFTWARE"
@@ -42,11 +44,27 @@ select_forced_encoder() {
         CPU)
             SELECTED_ENCODER="SOFTWARE"
             ;;
-        NVENC|QSV|VAAPI)
-            if is_encoder_available "$encoder"; then
-                SELECTED_ENCODER="$encoder"
+        NVENC)
+            if [[ "$NVENC_AVAILABLE" == true ]]; then
+                SELECTED_ENCODER="NVENC"
             else
-                log_warn "$encoder not available, using SOFTWARE"
+                log_warn "NVENC not available, using SOFTWARE"
+                SELECTED_ENCODER="SOFTWARE"
+            fi
+            ;;
+        QSV)
+            if [[ "$QSV_AVAILABLE" == true ]]; then
+                SELECTED_ENCODER="QSV"
+            else
+                log_warn "QSV not available, using SOFTWARE"
+                SELECTED_ENCODER="SOFTWARE"
+            fi
+            ;;
+        VAAPI)
+            if [[ "$VAAPI_AVAILABLE" == true ]]; then
+                SELECTED_ENCODER="VAAPI"
+            else
+                log_warn "VAAPI not available, using SOFTWARE"
                 SELECTED_ENCODER="SOFTWARE"
             fi
             ;;
@@ -64,8 +82,25 @@ select_automatic_encoder() {
 
     # Score available encoders
     for encoder in NVENC QSV VAAPI SOFTWARE; do
-        if is_encoder_available "$encoder"; then
-            score=${ENCODER_SCORES[$encoder]}
+        local is_available=false
+
+        case "$encoder" in
+            NVENC)
+                [[ "$NVENC_AVAILABLE" == true ]] && is_available=true
+                ;;
+            QSV)
+                [[ "$QSV_AVAILABLE" == true ]] && is_available=true
+                ;;
+            VAAPI)
+                [[ "$VAAPI_AVAILABLE" == true ]] && is_available=true
+                ;;
+            SOFTWARE)
+                is_available=true
+                ;;
+        esac
+
+        if [[ "$is_available" == true ]]; then
+            score=$(get_encoder_score "$encoder")
 
             # Bonus scoring for advanced features
             case "$encoder" in
@@ -307,7 +342,7 @@ configure_software_preset() {
     esac
 
     # CPU vendor optimizations
-    if [[ "$CPU_VENDOR" == "AMD" ]]; then
+    if [[ "${CPU_VENDOR:-}" == "AMD" ]]; then
         local numa_pools=$(((CPU_CORES + 7) / 8))
         preset_args+=("-x265-params" "pools=+:numa-pools=$numa_pools")
     fi

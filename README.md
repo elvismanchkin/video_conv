@@ -2,6 +2,8 @@
 
 A modular, maintainable Bash-based video converter with automatic hardware acceleration detection and optimization. Converts `.mkv` files to HEVC (H.265) using the best available encoder: NVIDIA NVENC, Intel QSV, AMD VAAPI, or software fallback.
 
+The script is designed to work correctly even when called through symlinks from system PATH directories.
+
 ## Features
 
 * **Modular Architecture**: Clean separation of concerns across multiple library files
@@ -42,6 +44,39 @@ ffmpeg ffprobe jq
 libva-utils
 ```
 
+## Installation
+
+### System-Wide Installation (Recommended)
+
+To make the script available system-wide, create a symlink in a directory that's in your PATH:
+
+```bash
+# Option 1: Using /usr/local/bin (requires sudo)
+sudo ln -sf /path/to/video_conv/cvrt.sh /usr/local/bin/cvrt
+
+# Option 2: Using user directory (if ~/bin is in PATH)
+mkdir -p ~/bin
+ln -sf /path/to/video_conv/cvrt.sh ~/bin/cvrt
+# Add to ~/.bashrc or ~/.zshrc if not already there:
+# export PATH="$HOME/bin:$PATH"
+
+# Option 3: Using Homebrew bin directory (macOS)
+ln -sf /path/to/video_conv/cvrt.sh /opt/homebrew/bin/cvrt
+```
+
+Replace `/path/to/video_conv/` with the actual path to your script directory.
+
+### Verify Installation
+
+After installation, you can run the script from anywhere:
+
+```bash
+cvrt --help
+cvrt /path/to/videos
+```
+
+The script will automatically locate its configuration and library files regardless of where it's called from.
+
 ### Distribution-Specific Setup
 
 **Ubuntu/Debian:**
@@ -71,6 +106,10 @@ sudo pacman -S ffmpeg libva-utils jq libva-mesa-driver
 
 ### Basic Syntax
 ```bash
+# If installed system-wide
+cvrt [OPTIONS] [DIRECTORY]
+
+# If running from script directory
 ./cvrt.sh [OPTIONS] [DIRECTORY]
 ```
 
@@ -88,22 +127,27 @@ sudo pacman -S ffmpeg libva-utils jq libva-mesa-driver
 
 **Standard conversion (safe, non-destructive):**
 ```bash
-./cvrt.sh /media/movies
+cvrt /media/movies
 ```
 
 **In-place replacement with debug output:**
 ```bash
-./cvrt.sh --replace --debug .
+cvrt --replace --debug .
 ```
 
 **Force CPU encoding for maximum quality:**
 ```bash
-./cvrt.sh --cpu /path/to/videos
+cvrt --cpu /path/to/videos
 ```
 
 **Auto-select best GPU encoder:**
 ```bash
-./cvrt.sh --gpu /media/4k-content
+cvrt --gpu /media/4k-content
+```
+
+**Running from script directory (if not installed system-wide):**
+```bash
+./cvrt.sh /media/movies
 ```
 
 ## Configuration
@@ -157,7 +201,7 @@ vainfo --display drm --device /dev/dri/renderD128
 ls -la /dev/dri/
 
 # Run with comprehensive debug output
-./cvrt.sh --debug --vaapi .
+cvrt --debug --vaapi .
 ```
 
 ### Permission Problems
@@ -170,13 +214,13 @@ sudo usermod -a -G video $USER
 ### Quality Issues (AMD VAAPI)
 ```bash
 # Force high-quality software encoding
-./cvrt.sh --cpu /path/to/videos
+cvrt --cpu /path/to/videos
 ```
 
 ### Missing Dependencies
 ```bash
 # Check all dependencies
-./cvrt.sh --debug
+cvrt --debug
 # Will report missing tools and suggest installation commands
 ```
 
@@ -230,3 +274,9 @@ analyze_video_file "test.mkv" info
 ---
 
 **Important:** Test with a few files before processing large libraries. The `--replace` option permanently overwrites original files.
+
+## Notes
+
+- The script uses symlink-aware path resolution, so it works correctly even when called through symlinks from system PATH directories
+- All library and configuration files are automatically located relative to the actual script location
+- Compatible with bash 3.2+ (including older macOS systems)

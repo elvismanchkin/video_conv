@@ -1,12 +1,12 @@
 #!/bin/bash
 
 # Global hardware state
-declare -g -A HW_SUPPORT=()
-declare -g -A HW_DEVICES=()
-declare -g -A ENCODER_CAPS=()
-declare -g CPU_VENDOR=""
-declare -g CPU_CORES=""
-declare -g CPU_MODEL=""
+HW_SUPPORT=()
+HW_DEVICES=()
+ENCODER_CAPS=()
+CPU_VENDOR=""
+CPU_CORES=""
+CPU_MODEL=""
 
 detect_cpu_info() {
     log_debug "Detecting CPU information"

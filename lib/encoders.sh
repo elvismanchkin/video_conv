@@ -1,8 +1,8 @@
 #!/bin/bash
 # Encoder selection and configuration management
 
-declare -g SELECTED_ENCODER=""
-declare -g FALLBACK_ENCODER=""
+SELECTED_ENCODER=""
+FALLBACK_ENCODER=""
 
 select_best_encoder() {
     local forced="${1:-}"

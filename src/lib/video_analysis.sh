@@ -20,6 +20,12 @@ analyze_video_file() {
         return 1
     fi
 
+    # Check for empty or invalid JSON
+    if [[ -z "$video_info" ]] || ! echo "$video_info" | jq empty >/dev/null 2>&1; then
+        log_error "Invalid or empty ffprobe output for: $file"
+        return 1
+    fi
+
     # Extract video and audio properties as key-value pairs
     extract_video_properties "$video_info"
     extract_audio_properties "$video_info"
@@ -101,12 +107,18 @@ detect_bit_depth() {
 }
 
 # Check if file needs audio processing
-# Args: analysis_array_name
+# Args: analysis_array_name (key-value string)
 needs_audio_processing() {
     local audio_count non_surround_count surround_count
-    audio_count=$(echo "$1" | jq -r '.audio_count')
-    non_surround_count=$(echo "$1" | jq -r '.non_surround_count')
-    surround_count=$(echo "$1" | jq -r '.surround_count')
+    local input="$1"
+    # Parse key-value pairs
+    for kv in $input; do
+        case $kv in
+            audio_count=*) audio_count="${kv#audio_count=}" ;;
+            non_surround_count=*) non_surround_count="${kv#non_surround_count=}" ;;
+            surround_count=*) surround_count="${kv#surround_count=}" ;;
+        esac
+    done
     [[ "$non_surround_count" == "0" && "$surround_count" -gt "0" ]]
 }
 
@@ -219,14 +231,17 @@ is_supported_format() {
 }
 
 # Check if file is already optimally encoded
-# Args: analysis_array_name
+# Args: analysis_array_name (key-value string)
 is_already_optimized() {
     local codec
-    codec=$(echo "$1" | jq -r '.codec')
+    local input="$1"
+    for kv in $input; do
+        case $kv in
+            codec=*) codec="${kv#codec=}" ;;
+        esac
+    done
     # Check if already HEVC with reasonable quality
     if [[ "$codec" == "hevc" ]]; then
-        # Could add more sophisticated checks here
-        # For now, just check codec
         log_debug "File already uses HEVC codec"
         return 0
     fi
@@ -235,7 +250,7 @@ is_already_optimized() {
 
 # Determine processing complexity based on resolution
 get_complexity_level() {
-    echo "[DEBUG] get_complexity_level: argc=$# 1='$1' 2='$2'" >&2
+    log_debug "get_complexity_level: argc=$# 1='$1' 2='$2'"
     local width="" height=""
     if (( $# >= 1 )); then width="$1"; fi
     if (( $# >= 2 )); then height="$2"; fi

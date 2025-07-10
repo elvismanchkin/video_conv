@@ -1,9 +1,8 @@
 #!/bin/bash
 
 # Hardware Detection and Capabilities
-# Compatible with bash 3.2+ and common Linux tools
 
-# Initialize hardware capability variables
+# Global variables
 NVENC_AVAILABLE=false
 VAAPI_AVAILABLE=false
 QSV_AVAILABLE=false
@@ -12,7 +11,6 @@ CPU_VENDOR=""
 GPU_INFO=""
 SYSTEM_TYPE=""
 
-# Initialize encoder capabilities array
 declare -A ENCODER_CAPS
 ENCODER_CAPS[NVENC_HEVC_10BIT]="false"
 ENCODER_CAPS[NVENC_AV1]="false"
@@ -21,13 +19,11 @@ ENCODER_CAPS[QSV_AV1]="false"
 ENCODER_CAPS[VAAPI_HEVC_10BIT]="false"
 ENCODER_CAPS[VAAPI_AV1]="false"
 
-# Initialize hardware devices array
 declare -A HW_DEVICES
 HW_DEVICES[VAAPI]="/dev/dri/renderD128"
 HW_DEVICES[NVENC]=""
 HW_DEVICES[QSV]=""
 
-# Initialize hardware support array
 declare -A HW_SUPPORT
 HW_SUPPORT[AMD_DISCRETE]="false"
 HW_SUPPORT[AMD_INTEGRATED]="false"
@@ -35,13 +31,12 @@ HW_SUPPORT[INTEL_DISCRETE]="false"
 HW_SUPPORT[INTEL_INTEGRATED]="false"
 HW_SUPPORT[NVIDIA_DISCRETE]="false"
 
-# Hardware capability scoring (higher = better)
+# Encoder scoring (higher = better)
 NVENC_SCORE=100
 VAAPI_SCORE=80
 QSV_SCORE=90
 CPU_SCORE=50
 
-# Selected encoder storage
 SELECTED_ENCODER=""
 
 detect_cpu_info() {
@@ -168,14 +163,10 @@ test_vaapi_support() {
     return 1
 }
 
-# Detect NVENC encoder capabilities
 detect_nvenc_capabilities() {
     log_debug "Detecting NVENC capabilities"
-
-    # Check for HEVC 10-bit support (assume available on modern cards)
     ENCODER_CAPS[NVENC_HEVC_10BIT]="true"
 
-    # Check for AV1 support (RTX 40 series and newer)
     if command -v nvidia-smi >/dev/null 2>&1; then
         local gpu_name
         gpu_name=$(nvidia-smi --query-gpu=name --format=csv,noheader,nounits 2>/dev/null | head -1)
@@ -185,14 +176,10 @@ detect_nvenc_capabilities() {
     fi
 }
 
-# Detect QSV encoder capabilities
 detect_qsv_capabilities() {
     log_debug "Detecting QSV capabilities"
-
-    # Most modern Intel GPUs support HEVC 10-bit
     ENCODER_CAPS[QSV_HEVC_10BIT]="true"
 
-    # AV1 support on Intel Arc and newer
     if [[ "$GPU_INFO" == *"Arc"* || "$GPU_INFO" == *"Xe"* ]]; then
         ENCODER_CAPS[QSV_AV1]="true"
     fi

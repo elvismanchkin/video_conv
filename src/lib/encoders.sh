@@ -44,27 +44,12 @@ select_forced_encoder() {
         CPU)
             SELECTED_ENCODER="SOFTWARE"
             ;;
-        NVENC)
-            if [[ "$NVENC_AVAILABLE" == true ]]; then
-                SELECTED_ENCODER="NVENC"
+        NVENC|QSV|VAAPI)
+            local encoder_available_var="${1}_AVAILABLE"
+            if [[ "${!encoder_available_var}" == true ]]; then
+                SELECTED_ENCODER="$1"
             else
-                log_warn "NVENC not available, using SOFTWARE"
-                SELECTED_ENCODER="SOFTWARE"
-            fi
-            ;;
-        QSV)
-            if [[ "$QSV_AVAILABLE" == true ]]; then
-                SELECTED_ENCODER="QSV"
-            else
-                log_warn "QSV not available, using SOFTWARE"
-                SELECTED_ENCODER="SOFTWARE"
-            fi
-            ;;
-        VAAPI)
-            if [[ "$VAAPI_AVAILABLE" == true ]]; then
-                SELECTED_ENCODER="VAAPI"
-            else
-                log_warn "VAAPI not available, using SOFTWARE"
+                log_warn "$1 not available, using SOFTWARE"
                 SELECTED_ENCODER="SOFTWARE"
             fi
             ;;
@@ -141,9 +126,8 @@ get_encoder_arguments() {
     args_array=()
 
     # Select codec based on user preference or hardware capabilities
-    local selected_codec_tmp
-    select_video_codec "$encoder" "$is_10bit" selected_codec_tmp
-    local selected_codec="$selected_codec_tmp"
+    local selected_codec
+    select_video_codec "$encoder" "$is_10bit" selected_codec
 
     case "$encoder" in
         NVENC)
@@ -172,46 +156,43 @@ get_encoder_arguments() {
 select_video_codec() {
     local encoder="$1"
     local is_10bit="$2"
-    local -n selected_codec=$3
-
-    local result_codec
+    local -n output_codec=$3
 
     # Use user-specified codec if available
     if [[ -n "${VIDEO_CODEC:-}" ]]; then
-        result_codec="$VIDEO_CODEC"
+        output_codec="$VIDEO_CODEC"
     else
         # Auto-select based on encoder capabilities
         case "$encoder" in
             NVENC)
                 if [[ "${ENCODER_CAPS[NVENC_AV1]:-}" == "true" ]]; then
-                    result_codec="av1"
+                    output_codec="av1"
                 else
-                    result_codec="hevc"
+                    output_codec="hevc"
                 fi
                 ;;
             QSV)
                 if [[ "${ENCODER_CAPS[QSV_AV1]:-}" == "true" ]]; then
-                    result_codec="av1"
+                    output_codec="av1"
                 else
-                    result_codec="hevc"
+                    output_codec="hevc"
                 fi
                 ;;
             VAAPI)
                 if [[ "${ENCODER_CAPS[VAAPI_AV1]:-}" == "true" ]]; then
-                    result_codec="av1"
+                    output_codec="av1"
                 else
-                    result_codec="hevc"
+                    output_codec="hevc"
                 fi
                 ;;
             SOFTWARE)
-                result_codec="hevc"
+                output_codec="hevc"
                 ;;
             *)
-                result_codec="hevc"
+                output_codec="hevc"
                 ;;
         esac
     fi
-    selected_codec="$result_codec"
     return 0
 }
 

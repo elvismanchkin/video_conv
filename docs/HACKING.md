@@ -23,20 +23,32 @@ This guide will help you extend the project with new formats, codecs, filters, h
 
 ```
 video_conv/
-├── config/
-│   └── defaults.conf         # Main config (formats, codecs, thresholds)
-├── lib/
-│   ├── utils.sh              # Logging, helpers
-│   ├── hardware.sh           # Hardware detection
-│   ├── encoders.sh           # Encoder selection/config
-│   ├── video_analysis.sh     # Video file analysis
-│   ├── audio_processing.sh   # Audio conversion
-│   └── video_filters.sh      # Video filter chain
-├── cvrt.sh                  # Main script (argument parsing, orchestration)
-├── ci-local.sh              # Local CI checks
-├── dev-tools.sh             # Development tools
-├── test_argument_parsing.sh # Argument parsing tests
-└── README.md
+├── cvrt.sh                  # Entry point script
+├── src/                     # Main source code
+│   ├── cvrt.sh             # Main implementation
+│   └── lib/                # Library modules
+│       ├── utils.sh              # Logging, helpers
+│       ├── hardware.sh           # Hardware detection
+│       ├── encoders.sh           # Encoder selection/config
+│       ├── video_analysis.sh     # Video file analysis
+│       ├── audio_processing.sh   # Audio conversion
+│       └── video_filters.sh      # Video filter chain
+├── config/                  # Configuration files
+│   └── defaults.conf        # Main config (formats, codecs, thresholds)
+├── tests/                   # Test files
+│   ├── test_argument_parsing.sh
+│   ├── test_config_sourcing.sh
+│   ├── test_filter_compatibility.sh
+│   ├── test_filter_integration.sh
+│   └── demo_filter_compatibility.sh
+├── scripts/                 # Utility scripts
+│   ├── ci-local.sh         # Local CI checks
+│   └── dev-tools.sh        # Development tools
+├── docs/                    # Documentation
+│   ├── README.md           # User documentation
+│   └── HACKING.md          # This file
+└── examples/                # Example configurations
+    └── custom.conf.example
 ```
 
 ---

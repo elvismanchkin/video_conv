@@ -237,15 +237,28 @@ The script uses `config/defaults.conf` for all default settings. This file conta
 
 ### Custom Configuration
 
-You can create a custom configuration file at `config/custom.conf` to override default settings:
+You can create a custom configuration file to override default settings. The script supports multiple configuration locations with the following precedence order (highest to lowest priority):
 
+1. **Current working directory** (`./custom.conf`) - for project-specific configs
+2. **XDG config directory** (`~/.config/video_conv/custom.conf`) - for user configs
+3. **User home directory** (`~/.video_conv.conf`) - legacy location
+4. **Script directory** (`config/custom.conf`) - system-wide defaults
+
+**Example setup:**
 ```bash
-# Copy the example file
-cp config/custom.conf.example config/custom.conf
+# Copy the example file to your preferred location
+cp config/custom.conf.example ~/.config/video_conv/custom.conf
+
+# Or create a project-specific config in your video directory
+cp config/custom.conf.example ./custom.conf
 
 # Edit to your preferences
-nano config/custom.conf
+nano ~/.config/video_conv/custom.conf
 ```
+
+**Configuration precedence example:**
+- If you have settings in `./custom.conf` (current directory) and `~/.config/video_conv/custom.conf`, the current directory settings will take precedence
+- This allows you to have global settings in XDG config and override them for specific projects
 
 #### What You Can Override
 

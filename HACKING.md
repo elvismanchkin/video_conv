@@ -228,7 +228,22 @@ Consider using --cpu for software encoding if you need these filters.
 
 ### User Configuration Overrides
 
-The script supports user customization through `config/custom.conf`. This file is automatically sourced after `defaults.conf`, allowing users to override various settings.
+The script supports user customization through multiple configuration locations with precedence order:
+
+1. **Current working directory** (`./custom.conf`) - highest priority, for project-specific configs
+2. **XDG config directory** (`~/.config/video_conv/custom.conf`) - for user configs
+3. **User home directory** (`~/.video_conv.conf`) - legacy location
+4. **Script directory** (`config/custom.conf`) - lowest priority, system-wide defaults
+
+**Configuration Precedence:**
+- Later sources override earlier ones
+- Current directory configs override global user configs
+- Allows project-specific overrides while maintaining global defaults
+
+**XDG Base Directory Support:**
+- Respects `$XDG_CONFIG_HOME` environment variable
+- Falls back to `~/.config/video_conv/` if not set
+- Follows XDG Base Directory Specification
 
 #### Overridable Arrays and Variables
 

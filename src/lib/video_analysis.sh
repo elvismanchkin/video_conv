@@ -64,27 +64,27 @@ validate_video_file() {
         log_error "Check that the file exists and you have read permissions."
         return 1
     fi
-    
+
     # Check file size
     if [[ ! -s "$file" ]]; then
         log_error "File is empty: $file"
         return 1
     fi
-    
+
     if ! is_supported_format "$file"; then
         log_error "Unsupported file extension: $file"
         log_error "Supported formats: ${SUPPORTED_INPUT_EXTENSIONS[*]}"
         log_error "Note: The file extension must match the actual format."
         return 1
     fi
-    
+
     # Check if file is readable
     if [[ ! -r "$file" ]]; then
         log_error "Cannot read file (insufficient permissions): $file"
         log_error "Try: chmod +r \"$file\""
         return 1
     fi
-    
+
     return 0
 }
 

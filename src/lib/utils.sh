@@ -87,7 +87,7 @@ check_dependencies() {
         log_error "After installation, run the script again."
         return 1
     fi
-    
+
     # Check optional tools and provide helpful warnings
     local missing_optional=()
     for tool in "${OPTIONAL_TOOLS[@]}"; do
@@ -95,7 +95,7 @@ check_dependencies() {
             missing_optional+=("$tool")
         fi
     done
-    
+
     if [[ ${#missing_optional[@]} -gt 0 ]]; then
         log_warn "Optional tools not found: ${missing_optional[*]}"
         log_warn "Hardware acceleration may be limited. Install for better performance:"
@@ -121,26 +121,26 @@ get_cpu_cores() {
 check_disk_space() {
     local path="$1"
     local required_mb="${2:-1000}"  # Default 1GB
-    
+
     if ! command_exists df; then
         log_warn "Cannot check disk space (df command not available)"
         return 0
     fi
-    
+
     local available_mb
     available_mb=$(df -m "$path" | awk 'NR==2 {print $4}')
-    
+
     if [[ -z "$available_mb" ]] || ! [[ "$available_mb" =~ ^[0-9]+$ ]]; then
         log_warn "Cannot determine available disk space"
         return 0
     fi
-    
+
     if [[ $available_mb -lt $required_mb ]]; then
         log_error "Insufficient disk space: ${available_mb}MB available, ${required_mb}MB recommended"
         log_error "Free up space or use a different output directory"
         return 1
     fi
-    
+
     log_debug "Disk space check passed: ${available_mb}MB available"
     return 0
 }
@@ -149,10 +149,10 @@ check_disk_space() {
 suggest_error_recovery() {
     local error_type="$1"
     local details="$2"
-    
+
     log_error ""
     log_error "Troubleshooting suggestions:"
-    
+
     case "$error_type" in
         "dependencies")
             log_error "  - Install missing tools using your package manager"
@@ -184,6 +184,6 @@ suggest_error_recovery() {
             log_error "  - Check the documentation for troubleshooting"
             ;;
     esac
-    
+
     log_error "  - Use --help for command line options"
 }

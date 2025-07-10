@@ -641,14 +641,14 @@ process_video_file() {
     local file="$1"
     local -A file_info
     log_info "Processing: $file"
-    
+
     # Check disk space before processing
     if ! check_disk_space "$(pwd)" 1000; then
         log_error "Skipping $file due to insufficient disk space"
         increment_stat failed
         return 1
     fi
-    
+
     local analysis_output
     if ! analysis_output=$(analyze_video_file "$file"); then
         log_error "Failed to analyze: $file"

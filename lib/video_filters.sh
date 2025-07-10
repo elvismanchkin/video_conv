@@ -6,17 +6,17 @@
 build_video_filters() {
     local input_file="$1"
     local -n filter_chain=$2
-    
+
     filter_chain=()
     local filters=()
-    
+
     # Get video properties for filter decisions
     local -A video_info
     if ! analyze_video_file "$input_file" video_info; then
         log_error "Failed to analyze video for filters"
         return 1
     fi
-    
+
     # Scaling filter
     if [[ "${SCALE_MODE:-none}" != "none" ]]; then
         local scale_filter
@@ -24,27 +24,27 @@ build_video_filters() {
             filters+=("$scale_filter")
         fi
     fi
-    
+
     # Deinterlacing filter
     if [[ "${DEINTERLACE:-false}" == "true" ]]; then
         filters+=("yadif=1:1:0")
     fi
-    
+
     # Denoising filter
     if [[ "${DENOISE:-false}" == "true" ]]; then
         filters+=("nlmeans=10:7:5:3")
     fi
-    
+
     # Sharpening filter
     if [[ "${SHARPEN:-false}" == "true" ]]; then
         filters+=("unsharp=3:3:1.5:3:3:0.5")
     fi
-    
+
     # Combine all filters
     if [[ ${#filters[@]} -gt 0 ]]; then
         filter_chain+=("-vf" "$(IFS=,; echo "${filters[*]}")")
     fi
-    
+
     log_debug "Video filters: ${filter_chain[*]}"
     return 0
 }
@@ -55,7 +55,7 @@ build_scale_filter() {
     local current_width="$1"
     local current_height="$2"
     local -n scale_filter=$3
-    
+
     case "${SCALE_MODE:-}" in
         1080p|1920x1080)
             scale_filter="scale=1920:1080:flags=lanczos"
@@ -82,7 +82,7 @@ build_scale_filter() {
             return 1
             ;;
     esac
-    
+
     return 0
 }
 
@@ -91,9 +91,9 @@ build_scale_filter() {
 build_subtitle_filters() {
     local input_file="$1"
     local -n subtitle_filters=$2
-    
+
     subtitle_filters=()
-    
+
     case "${SUBTITLE_MODE:-copy}" in
         burn)
             # Burn subtitles into video
@@ -116,7 +116,7 @@ build_subtitle_filters() {
             # Default: copy subtitles as-is
             ;;
     esac
-    
+
     return 0
 }
 
@@ -125,10 +125,10 @@ build_subtitle_filters() {
 find_subtitle_file() {
     local video_file="$1"
     local -n subtitle_file=$2
-    
+
     local base_name="${video_file%.*}"
     local subtitle_extensions=("srt" "ass" "ssa" "sub" "vtt")
-    
+
     for ext in "${subtitle_extensions[@]}"; do
         local potential_subtitle="${base_name}.${ext}"
         if [[ -f "$potential_subtitle" ]]; then
@@ -136,7 +136,7 @@ find_subtitle_file() {
             return 0
         fi
     done
-    
+
     return 1
 }
 
@@ -145,18 +145,18 @@ find_subtitle_file() {
 extract_subtitles() {
     local video_file="$1"
     local base_name="${video_file%.*}"
-    
+
     log_info "Extracting subtitles from: $(basename "$video_file")"
-    
+
     # Extract all subtitle streams
     if ffmpeg -i "$video_file" -map 0:s:0 "${base_name}.srt" 2>/dev/null; then
         log_info "    Extracted: $(basename "${base_name}.srt")"
     fi
-    
+
     # Extract additional subtitle streams if they exist
     local subtitle_count
     subtitle_count=$(ffprobe -v quiet -select_streams s -show_entries stream=index -of csv=p=0 "$video_file" | wc -l)
-    
+
     for ((i=1; i<subtitle_count; i++)); do
         if ffmpeg -i "$video_file" -map 0:s:$i "${base_name}_${i}.srt" 2>/dev/null; then
             log_info "    Extracted: $(basename "${base_name}_${i}.srt")"
@@ -168,9 +168,9 @@ extract_subtitles() {
 # Args: output_array_name
 build_metadata_args() {
     local -n metadata_args=$1
-    
+
     metadata_args=()
-    
+
     case "${METADATA_MODE:-copy}" in
         strip)
             metadata_args+=("-map_metadata" "-1")
@@ -184,7 +184,7 @@ build_metadata_args() {
             metadata_args+=("-map_metadata" "0")
             ;;
     esac
-    
+
     return 0
 }
 
@@ -192,9 +192,9 @@ build_metadata_args() {
 # Args: output_array_name
 build_performance_args() {
     local -n perf_args=$1
-    
+
     perf_args=()
-    
+
     # Thread count
     if [[ -n "${THREAD_COUNT:-}" && "$THREAD_COUNT" != "0" ]]; then
         perf_args+=("-threads" "$THREAD_COUNT")
@@ -204,17 +204,17 @@ build_performance_args() {
         optimal_threads=$(get_optimal_thread_count)
         perf_args+=("-threads" "$optimal_threads")
     fi
-    
+
     # Buffer size
     if [[ -n "${BUFFER_SIZE_MB:-}" ]]; then
         perf_args+=("-bufsize" "${BUFFER_SIZE_MB}M")
     fi
-    
+
     # Memory limit
     if [[ -n "${MAX_MEMORY_GB:-}" ]]; then
         perf_args+=("-max_muxing_queue_size" "$((MAX_MEMORY_GB * 1024))")
     fi
-    
+
     return 0
 }
 
@@ -222,16 +222,16 @@ build_performance_args() {
 get_optimal_thread_count() {
     local cpu_cores
     cpu_cores=$(get_cpu_cores)
-    
+
     # Use 75% of available cores for encoding
     local optimal_threads=$((cpu_cores * 3 / 4))
-    
+
     # Ensure minimum of 2 threads
     [[ $optimal_threads -lt 2 ]] && optimal_threads=2
-    
+
     # Ensure maximum of 16 threads to prevent system overload
     [[ $optimal_threads -gt 16 ]] && optimal_threads=16
-    
+
     echo "$optimal_threads"
 }
 
@@ -240,7 +240,7 @@ get_optimal_thread_count() {
 validate_filter_compatibility() {
     local encoder="$1"
     local filter_chain="$2"
-    
+
     # Check for hardware-specific filter limitations
     case "$encoder" in
         NVENC)
@@ -259,6 +259,6 @@ validate_filter_compatibility() {
             # Software encoding supports all filters
             ;;
     esac
-    
+
     return 0
-} 
+}

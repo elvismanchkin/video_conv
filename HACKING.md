@@ -33,7 +33,9 @@ video_conv/
 │   ├── audio_processing.sh   # Audio conversion
 │   └── video_filters.sh      # Video filter chain
 ├── cvrt.sh                  # Main script (argument parsing, orchestration)
+├── ci-local.sh              # Local CI checks
 ├── dev-tools.sh             # Development tools
+├── test_argument_parsing.sh # Argument parsing tests
 └── README.md
 ```
 
@@ -106,7 +108,7 @@ video_conv/
 ## Adding a New CLI Option
 
 1. **Edit `cvrt.sh`:**
-   - Add a new case in `parse_arguments()`:
+   - Add a new case in `parse_arguments()` for both getopt and legacy parsing:
    ```bash
    --newoption)
        NEWOPTION=true
@@ -115,8 +117,12 @@ video_conv/
        ;;
    ```
    - Add to `show_usage()` help text.
+   - If the option requires a value, add validation in `validate_parsed_arguments()`.
 2. **If it affects filters or encoders,** pass the variable to the relevant module.
 3. **Document in README.**
+4. **Test with `./test_argument_parsing.sh`** to ensure order-independent parsing works.
+
+**Note:** The argument parsing system supports both `getopt` (preferred) and legacy parsing (fallback). Options are order-independent and automatically validated.
 
 ---
 
@@ -131,10 +137,31 @@ video_conv/
 
 ## Testing Your Changes
 
-- Use `./dev-tools.sh all` to run all checks.
-- Use `./cvrt.sh --list-formats`, `--list-codecs`, and `--help` to verify discoverability.
-- Add test files and try new options on sample videos.
-- If adding a new filter or codec, test with a small video and check output quality.
+### Local Development Workflow
+
+1. **Run local CI checks:**
+   ```bash
+   ./ci-local.sh
+   ```
+
+2. **Use development tools:**
+   ```bash
+   ./dev-tools.sh all
+   ```
+
+3. **Test argument parsing:**
+   ```bash
+   ./test_argument_parsing.sh
+   ```
+
+4. **Verify functionality:**
+   - Use `./cvrt.sh --list-formats`, `--list-codecs`, and `--help` to verify discoverability.
+   - Add test files and try new options on sample videos.
+   - If adding a new filter or codec, test with a small video and check output quality.
+
+### Pre-commit Hooks
+
+The project includes pre-commit hooks that automatically run `./ci-local.sh` before each commit. This ensures code quality and prevents broken commits.
 
 ---
 
@@ -142,8 +169,10 @@ video_conv/
 
 - **Keep changes modular:** One feature per commit/PR.
 - **Update documentation** for every new feature.
-- **Add comments** at extension points.
+- **Write self-descriptive code:** Minimize comments, use clear function and variable names.
 - **Test on multiple platforms** if possible (Linux, macOS).
+- **Use the local CI system:** Always run `./ci-local.sh` before committing.
+- **Test argument parsing:** Ensure new CLI options work in any order.
 - **Ask for help:** If unsure, open an issue or PR for discussion.
 
 ---

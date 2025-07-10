@@ -1,11 +1,12 @@
-# GPU Video Converter v8.0 (Refactored)
+# GPU Video Converter v8.0
 
-A modular, maintainable Bash-based video converter with automatic hardware acceleration detection and optimization. Converts `.mkv` files to HEVC (H.265) using the best available encoder: NVIDIA NVENC, Intel QSV, AMD VAAPI, or software fallback.
+A modular, maintainable Bash-based video converter with automatic hardware acceleration detection and optimization. Converts video files to HEVC (H.265) using the best available encoder: NVIDIA NVENC, Intel QSV, AMD VAAPI, or software fallback.
 
-The script is designed to work correctly even when called through symlinks from system PATH directories.
+The script features robust command-line argument parsing that works regardless of option order, comprehensive error handling, and automatic fallbacks for maximum compatibility.
 
 ## Features
 
+* **Robust CLI Parsing**: Order-independent argument parsing with comprehensive validation
 * **Modular Architecture**: Clean separation of concerns across multiple library files
 * **Intelligent Hardware Detection**: Automatic detection and scoring of available encoders
 * **Multi-Platform GPU Support**:
@@ -22,11 +23,12 @@ The script is designed to work correctly even when called through symlinks from 
 * **RAM Disk Optimization**: Automatic use of `/dev/shm` when available
 * **Comprehensive Error Handling**: Graceful fallbacks and detailed logging
 * **10-bit HDR Support**: Hardware-accelerated when supported
+* **Local CI Integration**: Pre-commit hooks and local testing scripts
 
 ## Project Structure
 
 ```
-video-converter/
+video_conv/
 ├── config/
 │   └── defaults.conf      # Configuration settings
 ├── lib/
@@ -34,8 +36,12 @@ video-converter/
 │   ├── hardware.sh       # Hardware detection and capabilities
 │   ├── encoders.sh       # Encoder selection and configuration
 │   ├── video_analysis.sh # Video file analysis and metadata
-│   └── audio_processing.sh # Audio conversion and encoding
+│   ├── audio_processing.sh # Audio conversion and encoding
+│   └── video_filters.sh  # Video filter chain
 ├── cvrt.sh              # Main orchestration script
+├── ci-local.sh          # Local CI checks
+├── dev-tools.sh         # Development utilities
+├── test_argument_parsing.sh # Argument parsing tests
 └── README.md
 ```
 
@@ -153,6 +159,20 @@ cvrt [OPTIONS] [DIRECTORY]
 - `--nvenc`: Force NVIDIA NVENC encoder
 - `--vaapi`: Force AMD/Intel VAAPI encoder
 - `--qsv`: Force Intel Quick Sync Video encoder
+- `--format`: Specify output format (e.g., mp4, mkv, avi)
+- `--codec`: Force video codec (e.g., h264, hevc, av1)
+- `--audio-codec`: Force audio codec (e.g., aac, opus, flac)
+- `--quality`: Set quality parameter (e.g., 100, 200, 300)
+- `--preset`: Set encoding preset (e.g., fast, medium, high)
+- `--scale`: Set scaling mode (e.g., 1080p, 720p, 480p)
+- `--deinterlace`: Enable deinterlacing
+- `--denoise`: Enable denoising
+- `--sharpen`: Enable sharpening
+- `--subtitles`: Set subtitle mode (e.g., srt, ass, none)
+- `--metadata`: Set metadata mode (e.g., copy, remove, add)
+- `--threads`: Set thread count
+- `--list-formats`: List supported output formats
+- `--list-codecs`: List supported video/audio codecs
 - `--help`, `-h`: Show usage information
 
 ### Examples
@@ -177,9 +197,11 @@ cvrt --cpu /path/to/videos
 cvrt --gpu /media/4k-content
 ```
 
-**Convert to different format with specific codec:**
+**Convert to different format with specific codec (order-independent):**
 ```bash
 cvrt --format mp4 --codec h264 /path/to/videos
+cvrt --codec h264 --format mp4 /path/to/videos  # Same result!
+cvrt --debug --format mp4 --codec h264 --replace /path/to/videos  # Any order works!
 ```
 
 **Scale videos to 1080p with deinterlacing:**
@@ -309,7 +331,7 @@ cvrt --debug
 
 ## Output Format
 
-The refactored script provides cleaner, more informative output:
+The script provides cleaner, more informative output:
 
 ```
 [INFO] GPU Video Converter v8.0
@@ -329,6 +351,25 @@ The refactored script provides cleaner, more informative output:
 
 ## Development
 
+### Local CI Setup
+
+The project includes a comprehensive local CI system that mirrors GitHub Actions:
+
+```bash
+# Run all local CI checks
+./ci-local.sh
+
+# The script will automatically run before each commit
+# (pre-commit hook is already configured)
+```
+
+**Local CI checks include:**
+- ShellCheck static analysis on all `.sh` files
+- Bash syntax validation
+- Script help output verification
+- Trailing whitespace detection
+- Missing newline at EOF checks
+
 ### Development Tools Setup
 
 The project includes a comprehensive development toolkit for code quality and testing:
@@ -347,6 +388,15 @@ chmod +x dev-tools.sh
 ./dev-tools.sh newlines      # Missing final newlines
 ./dev-tools.sh format        # Auto-format code
 ./dev-tools.sh test          # Basic functionality tests
+```
+
+### Testing Argument Parsing
+
+Test the robust argument parsing with different option orders:
+
+```bash
+# Run argument parsing tests
+./test_argument_parsing.sh
 ```
 
 ### Required Development Tools
@@ -383,7 +433,10 @@ The project follows these coding standards:
 - **Modular Design**: Clean separation of concerns across library files
 - **Cross-Platform Compatibility**: Works on Linux, macOS (Intel/ARM)
 - **Error Handling**: Comprehensive error checking and graceful fallbacks
-- **Documentation**: Clear inline comments and comprehensive README
+- **Minimal Comments**: Self-descriptive code with comments only for non-obvious logic
+- **Robust CLI**: Order-independent argument parsing with comprehensive validation
+
+**Note:** ShellCheck may show style warnings (SC2155, SC2178, etc.) but these don't affect functionality. The project prioritizes compatibility and readability over strict style compliance.
 
 ### Testing Individual Components
 ```bash
@@ -415,12 +468,13 @@ The project includes GitHub Actions workflows for automated testing:
 ### Project Structure for Developers
 
 ```
-video-converter/
+video_conv/
 ├── .github/workflows/     # CI/CD pipelines
 ├── .shellcheckrc         # ShellCheck configuration
-├── .editorconfig         # Editor consistency
-├── .gitignore           # Git exclusions
+├── .git/hooks/pre-commit # Pre-commit hook
+├── ci-local.sh          # Local CI script
 ├── dev-tools.sh         # Development utilities
+├── test_argument_parsing.sh # Argument parsing tests
 ├── config/              # Configuration files
 ├── lib/                 # Core library modules
 ├── cvrt.sh             # Main script
@@ -434,6 +488,7 @@ video-converter/
 - **Input validation**: Comprehensive file and dependency checking
 - **Clean error handling**: Proper cleanup and informative error messages
 - **RAM disk management**: Automatic size checking to prevent system issues
+- **Robust argument parsing**: Order-independent CLI with comprehensive validation
 
 ---
 
@@ -446,13 +501,14 @@ video-converter/
 - Compatible with bash 3.2+ (including older macOS systems)
 - Cross-platform support: Linux (x86_64, ARM), macOS (Intel, Apple Silicon)
 - Development tools included for code quality maintenance
+- Pre-commit hooks ensure code quality before each commit
 
 ## Contributing
 
 1. **Fork the repository**
 2. **Create a feature branch**: `git checkout -b feature/amazing-feature`
 3. **Make your changes** following the coding standards
-4. **Run quality checks**: `./dev-tools.sh all`
+4. **Run quality checks**: `./ci-local.sh`
 5. **Test your changes**: `./dev-tools.sh test`
 6. **Commit your changes**: `git commit -m 'Add amazing feature'`
 7. **Push to the branch**: `git push origin feature/amazing-feature`
@@ -466,5 +522,6 @@ Before submitting changes, ensure:
 - [ ] No trailing whitespace: `./dev-tools.sh whitespace`
 - [ ] All files have final newlines: `./dev-tools.sh newlines`
 - [ ] Basic tests pass: `./dev-tools.sh test`
+- [ ] Local CI passes: `./ci-local.sh`
 - [ ] Documentation is updated
 - [ ] Cross-platform compatibility maintained

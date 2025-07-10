@@ -179,7 +179,8 @@ encode_with_converted_audio() {
         # Try fallback encoder if available
         if [[ -n "$FALLBACK_ENCODER" && "$SELECTED_ENCODER" != "$FALLBACK_ENCODER" ]]; then
             log_warn "Retrying with fallback encoder: $FALLBACK_ENCODER"
-            return encode_with_fallback "$input_file" "$output_file" "$temp_dir" encode_data
+            encode_with_fallback "$input_file" "$output_file" "$temp_dir" encode_data
+            return $?
         fi
         return 1
     fi
@@ -242,7 +243,8 @@ process_video_only() {
         # Try fallback encoder if available
         if [[ -n "$FALLBACK_ENCODER" && "$SELECTED_ENCODER" != "$FALLBACK_ENCODER" ]]; then
             log_warn "Retrying with fallback encoder: $FALLBACK_ENCODER"
-            return encode_video_with_fallback "$input_file" "$output_file" video_data
+            encode_video_with_fallback "$input_file" "$output_file" video_data
+            return $?
         fi
         return 1
     fi

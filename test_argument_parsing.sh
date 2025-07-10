@@ -24,15 +24,15 @@ run_test() {
     local expected_exit_code="$2"
     shift 2
     local args=("$@")
-    
+
     echo -n "Testing: $test_name ... "
-    
+
     # Run the command and capture exit code
     local actual_exit_code=0
     if ! "${CVRT_SCRIPT}" "${args[@]}" >/dev/null 2>&1; then
         actual_exit_code=$?
     fi
-    
+
     if [[ $actual_exit_code -eq $expected_exit_code ]]; then
         echo -e "${GREEN}PASS${NC}"
         ((TESTS_PASSED++))

@@ -471,6 +471,7 @@ configure_software_preset() {
 # Configure x265 preset
 configure_x265_preset() {
     local complexity="$1"
+    # shellcheck disable=SC2178
     local -n preset_args=$2
 
     case "$complexity" in

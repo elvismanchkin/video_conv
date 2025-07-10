@@ -239,8 +239,9 @@ get_optimal_thread_count() {
 # Args: encoder_name filter_chain
 validate_filter_compatibility() {
     local encoder="$1"
+    # shellcheck disable=SC2178
     local filter_chain="$2"
-
+    # shellcheck disable=SC2128
     # Check for hardware-specific filter limitations
     case "$encoder" in
         NVENC)

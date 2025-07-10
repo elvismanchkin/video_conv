@@ -52,7 +52,8 @@ set_stat() {
     esac
 }
 increment_stat() {
-    local current=$(get_stat "$1")
+    local current
+    current=$(get_stat "$1")
     set_stat "$1" $((current + 1))
 }
 STATS_SUCCESS=0
@@ -655,9 +656,12 @@ process_all_files() {
 }
 
 show_final_stats() {
-    local success_count=$(get_stat success)
-    local failed_count=$(get_stat failed)
-    local skipped_count=$(get_stat skipped)
+    local success_count
+    success_count=$(get_stat success)
+    local failed_count
+    failed_count=$(get_stat failed)
+    local skipped_count
+    skipped_count=$(get_stat skipped)
     local total=$((success_count + failed_count + skipped_count))
     printf "\n[RESULTS] Success: %d | Failed: %d | Skipped: %d | Total: %d\n" \
         "$success_count" \

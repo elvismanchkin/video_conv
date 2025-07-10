@@ -23,8 +23,10 @@ set_log_level() {
 
 should_log() {
     local msg_level="$1"
-    local current_level_num=$(get_log_level_value "$LOG_LEVEL")
-    local msg_level_num=$(get_log_level_value "$msg_level")
+    local current_level_num
+    current_level_num=$(get_log_level_value "$LOG_LEVEL")
+    local msg_level_num
+    msg_level_num=$(get_log_level_value "$msg_level")
     [[ $msg_level_num -ge $current_level_num ]]
 }
 

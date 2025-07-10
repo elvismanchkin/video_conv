@@ -9,7 +9,8 @@ while [ -h "$SCRIPT_SOURCE" ]; do
     SCRIPT_SOURCE="$(readlink "$SCRIPT_SOURCE")"
     [[ $SCRIPT_SOURCE != /* ]] && SCRIPT_SOURCE="$SCRIPT_DIR/$SCRIPT_SOURCE"
 done
-readonly SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" && pwd)"
+cd_script_dir="$(cd -P "$(dirname "$SCRIPT_SOURCE")" && pwd)"
+readonly SCRIPT_DIR="$cd_script_dir"
 readonly LIB_DIR="${SCRIPT_DIR}/lib"
 readonly CONFIG_DIR="${SCRIPT_DIR}/config"
 

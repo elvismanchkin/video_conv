@@ -502,6 +502,7 @@ configure_x265_preset() {
 # Configure x264 preset
 configure_x264_preset() {
     local complexity="$1"
+    # shellcheck disable=SC2178
     local -n preset_args=$2
 
     case "$complexity" in
@@ -520,6 +521,7 @@ configure_x264_preset() {
 # Configure AV1 preset
 configure_av1_preset() {
     local complexity="$1"
+    # shellcheck disable=SC2178
     local -n preset_args=$2
 
     case "$complexity" in
@@ -538,6 +540,7 @@ configure_av1_preset() {
 # Configure VP9 preset
 configure_vp9_preset() {
     local complexity="$1"
+    # shellcheck disable=SC2178
     local -n preset_args=$2
 
     case "$complexity" in

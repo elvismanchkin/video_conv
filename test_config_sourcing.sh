@@ -118,4 +118,4 @@ echo "✓ XDG_CONFIG_HOME environment variable support"
 echo "✓ Proper precedence order (later sources override earlier ones)"
 echo
 echo "Users can now place configuration files in their preferred location"
-echo "and have project-specific overrides while maintaining global defaults." 
+echo "and have project-specific overrides while maintaining global defaults."

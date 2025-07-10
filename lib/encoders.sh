@@ -141,8 +141,9 @@ get_encoder_arguments() {
     args_array=()
 
     # Select codec based on user preference or hardware capabilities
-    local selected_codec
-    select_video_codec "$encoder" "$is_10bit" selected_codec
+    local selected_codec_tmp
+    select_video_codec "$encoder" "$is_10bit" selected_codec_tmp
+    local selected_codec="$selected_codec_tmp"
 
     case "$encoder" in
         NVENC)
@@ -173,43 +174,45 @@ select_video_codec() {
     local is_10bit="$2"
     local -n selected_codec=$3
 
+    local result_codec
+
     # Use user-specified codec if available
     if [[ -n "${VIDEO_CODEC:-}" ]]; then
-        selected_codec="$VIDEO_CODEC"
-        return 0
+        result_codec="$VIDEO_CODEC"
+    else
+        # Auto-select based on encoder capabilities
+        case "$encoder" in
+            NVENC)
+                if [[ "${ENCODER_CAPS[NVENC_AV1]:-}" == "true" ]]; then
+                    result_codec="av1"
+                else
+                    result_codec="hevc"
+                fi
+                ;;
+            QSV)
+                if [[ "${ENCODER_CAPS[QSV_AV1]:-}" == "true" ]]; then
+                    result_codec="av1"
+                else
+                    result_codec="hevc"
+                fi
+                ;;
+            VAAPI)
+                if [[ "${ENCODER_CAPS[VAAPI_AV1]:-}" == "true" ]]; then
+                    result_codec="av1"
+                else
+                    result_codec="hevc"
+                fi
+                ;;
+            SOFTWARE)
+                result_codec="hevc"
+                ;;
+            *)
+                result_codec="hevc"
+                ;;
+        esac
     fi
-
-    # Auto-select based on encoder capabilities
-    case "$encoder" in
-        NVENC)
-            if [[ "${ENCODER_CAPS[NVENC_AV1]:-}" == "true" ]]; then
-                selected_codec="av1"
-            else
-                selected_codec="hevc"
-            fi
-            ;;
-        QSV)
-            if [[ "${ENCODER_CAPS[QSV_AV1]:-}" == "true" ]]; then
-                selected_codec="av1"
-            else
-                selected_codec="hevc"
-            fi
-            ;;
-        VAAPI)
-            if [[ "${ENCODER_CAPS[VAAPI_AV1]:-}" == "true" ]]; then
-                selected_codec="av1"
-            else
-                selected_codec="hevc"
-            fi
-            ;;
-        SOFTWARE)
-            # Software encoding supports all codecs
-            selected_codec="hevc"
-            ;;
-        *)
-            selected_codec="hevc"
-            ;;
-    esac
+    selected_codec="$result_codec"
+    return 0
 }
 
 # NVENC encoder arguments

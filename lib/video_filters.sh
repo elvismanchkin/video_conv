@@ -12,15 +12,17 @@ build_video_filters() {
 
     # Get video properties for filter decisions
     local -A video_info
-    if ! analyze_video_file "$input_file" video_info; then
+    local analysis_output
+    if ! analysis_output=$(analyze_video_file "$input_file"); then
         log_error "Failed to analyze video for filters"
         return 1
     fi
+    eval "$(echo $analysis_output | sed 's/\([^ ]*\)/video_info[\1/g;s/=/]=/g')"
 
     # Scaling filter
     if [[ "${SCALE_MODE:-none}" != "none" ]]; then
         local scale_filter
-        if build_scale_filter "${video_info[width]}" "${video_info[height]}" scale_filter; then
+        if build_scale_filter "${video_info[width]:-}" "${video_info[height]:-}" scale_filter; then
             filters+=("$scale_filter")
         fi
     fi
@@ -90,16 +92,14 @@ build_scale_filter() {
 # Args: input_file output_array_name
 build_subtitle_filters() {
     local input_file="$1"
-    local -n subtitle_filters=$2
-
-    subtitle_filters=()
+    local _subtitle_filters=()
 
     case "${SUBTITLE_MODE:-copy}" in
         burn)
             # Burn subtitles into video
             local subtitle_file
             if find_subtitle_file "$input_file" subtitle_file; then
-                subtitle_filters+=("-vf" "subtitles=$subtitle_file")
+                _subtitle_filters+=("-vf" "subtitles=$subtitle_file")
             else
                 log_warn "No subtitle file found for burning"
             fi
@@ -110,13 +110,15 @@ build_subtitle_filters() {
             ;;
         none)
             # Remove all subtitles
-            subtitle_filters+=("-sn")
+            _subtitle_filters+=("-sn")
             ;;
         copy|*)
             # Default: copy subtitles as-is
             ;;
     esac
 
+    # Return array as a string
+    echo "${_subtitle_filters[@]}"
     return 0
 }
 
@@ -167,54 +169,52 @@ extract_subtitles() {
 # Build metadata handling arguments
 # Args: output_array_name
 build_metadata_args() {
-    local -n metadata_args=$1
-
-    metadata_args=()
+    local _metadata_args=()
 
     case "${METADATA_MODE:-copy}" in
         strip)
-            metadata_args+=("-map_metadata" "-1")
+            _metadata_args+=("-map_metadata" "-1")
             ;;
         minimal)
             # Keep only essential metadata
-            metadata_args+=("-map_metadata" "0" "-metadata" "title=" "-metadata" "artist=" "-metadata" "album=")
+            _metadata_args+=("-map_metadata" "0" "-metadata" "title=" "-metadata" "artist=" "-metadata" "album=")
             ;;
         copy|*)
             # Default: copy all metadata
-            metadata_args+=("-map_metadata" "0")
+            _metadata_args+=("-map_metadata" "0")
             ;;
     esac
 
+    echo "${_metadata_args[@]}"
     return 0
 }
 
 # Build performance optimization arguments
 # Args: output_array_name
 build_performance_args() {
-    local -n perf_args=$1
-
-    perf_args=()
+    local _perf_args=()
 
     # Thread count
     if [[ -n "${THREAD_COUNT:-}" && "$THREAD_COUNT" != "0" ]]; then
-        perf_args+=("-threads" "$THREAD_COUNT")
+        _perf_args+=("-threads" "$THREAD_COUNT")
     else
         # Auto-detect optimal thread count
         local optimal_threads
         optimal_threads=$(get_optimal_thread_count)
-        perf_args+=("-threads" "$optimal_threads")
+        _perf_args+=("-threads" "$optimal_threads")
     fi
 
     # Buffer size
     if [[ -n "${BUFFER_SIZE_MB:-}" ]]; then
-        perf_args+=("-bufsize" "${BUFFER_SIZE_MB}M")
+        _perf_args+=("-bufsize" "${BUFFER_SIZE_MB}M")
     fi
 
     # Memory limit
     if [[ -n "${MAX_MEMORY_GB:-}" ]]; then
-        perf_args+=("-max_muxing_queue_size" "$((MAX_MEMORY_GB * 1024))")
+        _perf_args+=("-max_muxing_queue_size" "$((MAX_MEMORY_GB * 1024))")
     fi
 
+    echo "${_perf_args[@]}"
     return 0
 }
 

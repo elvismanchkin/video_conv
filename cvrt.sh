@@ -570,11 +570,13 @@ process_video_file() {
     local file="$1"
     local -A file_info
     log_info "Processing: $file"
-    if ! analyze_video_file "$file" file_info; then
+    local analysis_output
+    if ! analysis_output=$(analyze_video_file "$file"); then
         log_error "Failed to analyze: $file"
         increment_stat failed
         return 1
     fi
+    eval "$(echo $analysis_output | sed 's/\([^ ]*\)/file_info[\1/g;s/=/]=/g')"
     printf "    %s %dx%d (%dbit) | %d audio tracks\n" \
         "${file_info[codec]}" \
         "${file_info[width]}" \
@@ -593,7 +595,13 @@ process_video_file() {
         log_debug "Selected encoder: $(get_selected_encoder)"
         log_debug "Output path: $output_path"
     fi
-    if process_with_encoder "$file" "$output_path" file_info; then
+    # Validate that CONTAINER_FORMATS mapping exists for OUTPUT_FORMAT
+    if [[ -z "${CONTAINER_FORMATS[$OUTPUT_FORMAT]:-}" ]]; then
+        log_error "No container mapping found for output format: $OUTPUT_FORMAT"
+        log_info "Check your SUPPORTED_OUTPUT_FORMATS and CONTAINER_FORMATS settings."
+        exit 1
+    fi
+    if process_with_encoder "$file" "$output_path" "$analysis_output" "${CONTAINER_FORMATS[$OUTPUT_FORMAT]}"; then
         increment_stat success
         if [[ "$REPLACE_SOURCE" == true ]]; then
             log_info "    [SUCCESS] Replaced original"

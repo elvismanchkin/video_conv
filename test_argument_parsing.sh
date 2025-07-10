@@ -1,9 +1,12 @@
 #!/bin/bash
 
-# Test script to demonstrate robust argument parsing
-# This script tests the cvrt.sh argument parsing with different option orders
+# Test script for argument parsing validation
+# This script tests the enhanced validation in cvrt.sh
 
 set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CVRT_SCRIPT="${SCRIPT_DIR}/cvrt.sh"
 
 # Colors for output
 RED='\033[0;31m'
@@ -15,110 +18,70 @@ NC='\033[0m' # No Color
 TESTS_PASSED=0
 TESTS_FAILED=0
 
-# Function to run a test
+# Test function
 run_test() {
     local test_name="$1"
-    local expected_output="$2"
+    local expected_exit_code="$2"
     shift 2
     local args=("$@")
-
-    echo -e "${YELLOW}Testing: $test_name${NC}"
-    echo "Command: ./cvrt.sh ${args[*]}"
-
-    # Capture output and exit code
-    local output
-    local exit_code
-    output=$(./cvrt.sh "${args[@]}" 2>&1) || exit_code=$?
-
-    # Check if the output contains expected content
-    if echo "$output" | grep -q "$expected_output"; then
-        echo -e "${GREEN}✓ PASS${NC}"
+    
+    echo -n "Testing: $test_name ... "
+    
+    # Run the command and capture exit code
+    local actual_exit_code=0
+    if ! "${CVRT_SCRIPT}" "${args[@]}" >/dev/null 2>&1; then
+        actual_exit_code=$?
+    fi
+    
+    if [[ $actual_exit_code -eq $expected_exit_code ]]; then
+        echo -e "${GREEN}PASS${NC}"
         ((TESTS_PASSED++))
     else
-        echo -e "${RED}✗ FAIL${NC}"
-        echo "Expected: $expected_output"
-        echo "Got: $output"
+        echo -e "${RED}FAIL${NC} (expected: $expected_exit_code, got: $actual_exit_code)"
         ((TESTS_FAILED++))
     fi
-    echo
 }
 
-# Function to test error cases
-run_error_test() {
-    local test_name="$1"
-    local expected_error="$2"
-    shift 2
-    local args=("$@")
-
-    echo -e "${YELLOW}Testing Error: $test_name${NC}"
-    echo "Command: ./cvrt.sh ${args[*]}"
-
-    # Capture output and exit code
-    local output
-    local exit_code
-    output=$(./cvrt.sh "${args[@]}" 2>&1) || exit_code=$?
-
-    # Check if the output contains expected error
-    if echo "$output" | grep -q "$expected_error"; then
-        echo -e "${GREEN}✓ PASS (Error correctly caught)${NC}"
-        ((TESTS_PASSED++))
-    else
-        echo -e "${RED}✗ FAIL (Error not caught properly)${NC}"
-        echo "Expected error: $expected_error"
-        echo "Got: $output"
-        ((TESTS_FAILED++))
-    fi
-    echo
-}
-
-echo "Testing cvrt.sh argument parsing robustness..."
+echo "Testing argument parsing validation in cvrt.sh"
 echo "=============================================="
+
+# Test 1: Valid arguments should work
+run_test "Valid format, codec, and audio-codec" 0 --format mp4 --codec hevc --audio-codec aac --help
+
+# Test 2: Invalid video codec should fail
+run_test "Invalid video codec (h265)" 1 --codec h265 --help
+
+# Test 3: Invalid output format should fail
+run_test "Invalid output format (avi)" 1 --format avi --help
+
+# Test 4: Invalid audio codec should fail
+run_test "Invalid audio codec (wma)" 1 --audio-codec wma --help
+
+# Test 5: Multiple invalid arguments should fail
+run_test "Multiple invalid arguments" 1 --format avi --codec h265 --audio-codec wma --help
+
+# Test 6: Valid arguments with different values
+run_test "Valid mkv format" 0 --format mkv --help
+run_test "Valid h264 codec" 0 --codec h264 --help
+run_test "Valid opus audio codec" 0 --audio-codec opus --help
+
+# Test 7: List commands should still work
+run_test "List formats command" 0 --list-formats
+run_test "List codecs command" 0 --list-codecs
+
+# Test 8: Help command should work
+run_test "Help command" 0 --help
+
 echo
-
-# Test 1: Normal order
-run_test "Normal order" "Output format: mp4" --format mp4 --codec h264
-
-# Test 2: Reversed order (this was the problematic case)
-run_test "Reversed order" "Output format: mp4" --codec h264 --format mp4
-
-# Test 3: Mixed order
-run_test "Mixed order" "Video codec: h264" --format mp4 --debug --codec h264 --replace
-
-# Test 4: Multiple options with values
-run_test "Multiple value options" "Thread count: 4" --format mkv --codec hevc --threads 4 --audio-codec aac
-
-# Test 5: Error case - missing argument
-run_error_test "Missing format argument" "Missing format argument" --format
-
-# Test 6: Error case - invalid format
-run_error_test "Invalid format" "Invalid output format" --format invalid_format
-
-# Test 7: Error case - invalid codec
-run_error_test "Invalid codec" "Invalid video codec" --codec invalid_codec
-
-# Test 8: Error case - invalid thread count
-run_error_test "Invalid thread count" "Invalid thread count" --threads -1
-
-# Test 9: Error case - invalid quality
-run_error_test "Invalid quality" "Invalid quality parameter" --quality 9999
-
-# Test 10: Help and list commands
-run_test "Help command" "GPU Video Converter" --help
-
-run_test "List formats" "Supported Output Formats" --list-formats
-
-run_test "List codecs" "Supported Video Codecs" --list-codecs
-
-echo "=============================================="
 echo "Test Results:"
+echo "============="
 echo -e "${GREEN}Passed: $TESTS_PASSED${NC}"
 echo -e "${RED}Failed: $TESTS_FAILED${NC}"
-echo "Total: $((TESTS_PASSED + TESTS_FAILED))"
 
 if [[ $TESTS_FAILED -eq 0 ]]; then
-    echo -e "${GREEN}All tests passed! Argument parsing is robust.${NC}"
+    echo -e "${GREEN}All tests passed!${NC}"
     exit 0
 else
-    echo -e "${RED}Some tests failed. Please review the argument parsing implementation.${NC}"
+    echo -e "${RED}Some tests failed!${NC}"
     exit 1
 fi

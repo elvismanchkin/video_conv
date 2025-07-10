@@ -91,16 +91,55 @@ parse_arguments() {
                     ;;
                 --format)
                     OUTPUT_FORMAT="$2"
+                    # Validate format immediately
+                    local valid_format=false
+                    for format in "${SUPPORTED_OUTPUT_FORMATS[@]}"; do
+                        if [[ "$OUTPUT_FORMAT" == "$format" ]]; then
+                            valid_format=true
+                            break
+                        fi
+                    done
+                    if [[ "$valid_format" == false ]]; then
+                        log_error "Invalid output format: $OUTPUT_FORMAT"
+                        log_info "Supported formats: ${SUPPORTED_OUTPUT_FORMATS[*]}"
+                        exit 1
+                    fi
                     log_info "Output format: $OUTPUT_FORMAT"
                     shift 2
                     ;;
                 --codec)
                     VIDEO_CODEC="$2"
+                    # Validate video codec immediately
+                    local valid_codec=false
+                    for codec in "${SUPPORTED_VIDEO_CODECS[@]}"; do
+                        if [[ "$VIDEO_CODEC" == "$codec" ]]; then
+                            valid_codec=true
+                            break
+                        fi
+                    done
+                    if [[ "$valid_codec" == false ]]; then
+                        log_error "Invalid video codec: $VIDEO_CODEC"
+                        log_info "Supported codecs: ${SUPPORTED_VIDEO_CODECS[*]}"
+                        exit 1
+                    fi
                     log_info "Video codec: $VIDEO_CODEC"
                     shift 2
                     ;;
                 --audio-codec)
                     AUDIO_CODEC="$2"
+                    # Validate audio codec immediately
+                    local valid_audio_codec=false
+                    for codec in "${SUPPORTED_AUDIO_CODECS[@]}"; do
+                        if [[ "$AUDIO_CODEC" == "$codec" ]]; then
+                            valid_audio_codec=true
+                            break
+                        fi
+                    done
+                    if [[ "$valid_audio_codec" == false ]]; then
+                        log_error "Invalid audio codec: $AUDIO_CODEC"
+                        log_info "Supported audio codecs: ${SUPPORTED_AUDIO_CODECS[*]}"
+                        exit 1
+                    fi
                     log_info "Audio codec: $AUDIO_CODEC"
                     shift 2
                     ;;
@@ -211,6 +250,19 @@ parse_arguments_legacy() {
             --format)
                 if [[ -n "${2:-}" && ! "$2" =~ ^- ]]; then
                     OUTPUT_FORMAT="$2"
+                    # Validate format immediately
+                    local valid_format=false
+                    for format in "${SUPPORTED_OUTPUT_FORMATS[@]}"; do
+                        if [[ "$OUTPUT_FORMAT" == "$format" ]]; then
+                            valid_format=true
+                            break
+                        fi
+                    done
+                    if [[ "$valid_format" == false ]]; then
+                        log_error "Invalid output format: $OUTPUT_FORMAT"
+                        log_info "Supported formats: ${SUPPORTED_OUTPUT_FORMATS[*]}"
+                        exit 1
+                    fi
                     log_info "Output format: $OUTPUT_FORMAT"
                     shift 2
                 else
@@ -222,6 +274,19 @@ parse_arguments_legacy() {
             --codec)
                 if [[ -n "${2:-}" && ! "$2" =~ ^- ]]; then
                     VIDEO_CODEC="$2"
+                    # Validate video codec immediately
+                    local valid_codec=false
+                    for codec in "${SUPPORTED_VIDEO_CODECS[@]}"; do
+                        if [[ "$VIDEO_CODEC" == "$codec" ]]; then
+                            valid_codec=true
+                            break
+                        fi
+                    done
+                    if [[ "$valid_codec" == false ]]; then
+                        log_error "Invalid video codec: $VIDEO_CODEC"
+                        log_info "Supported codecs: ${SUPPORTED_VIDEO_CODECS[*]}"
+                        exit 1
+                    fi
                     log_info "Video codec: $VIDEO_CODEC"
                     shift 2
                 else
@@ -233,6 +298,19 @@ parse_arguments_legacy() {
             --audio-codec)
                 if [[ -n "${2:-}" && ! "$2" =~ ^- ]]; then
                     AUDIO_CODEC="$2"
+                    # Validate audio codec immediately
+                    local valid_audio_codec=false
+                    for codec in "${SUPPORTED_AUDIO_CODECS[@]}"; do
+                        if [[ "$AUDIO_CODEC" == "$codec" ]]; then
+                            valid_audio_codec=true
+                            break
+                        fi
+                    done
+                    if [[ "$valid_audio_codec" == false ]]; then
+                        log_error "Invalid audio codec: $AUDIO_CODEC"
+                        log_info "Supported audio codecs: ${SUPPORTED_AUDIO_CODECS[*]}"
+                        exit 1
+                    fi
                     log_info "Audio codec: $AUDIO_CODEC"
                     shift 2
                 else

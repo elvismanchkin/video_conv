@@ -159,9 +159,9 @@ cvrt [OPTIONS] [DIRECTORY]
 - `--nvenc`: Force NVIDIA NVENC encoder
 - `--vaapi`: Force AMD/Intel VAAPI encoder
 - `--qsv`: Force Intel Quick Sync Video encoder
-- `--format`: Specify output format (e.g., mp4, mkv, avi)
-- `--codec`: Force video codec (e.g., h264, hevc, av1)
-- `--audio-codec`: Force audio codec (e.g., aac, opus, flac)
+- `--format`: Specify output format (**must be one of:** mkv, mp4, mov, webm)
+- `--codec`: Force video codec (**must be one of:** hevc, h264, av1, vp9)
+- `--audio-codec`: Force audio codec (**must be one of:** aac, ac3, opus, flac, mp3)
 - `--quality`: Set quality parameter (e.g., 100, 200, 300)
 - `--preset`: Set encoding preset (e.g., fast, medium, high)
 - `--scale`: Set scaling mode (e.g., 1080p, 720p, 480p)
@@ -285,6 +285,17 @@ See [HACKING.md](./HACKING.md) for advanced extension guides (adding formats, co
 
 ## Troubleshooting
 
+### Validation Errors / Typos
+
+If you see an error like:
+
+```
+[ERROR] Invalid video codec: h265
+[INFO] Supported codecs: hevc h264 av1 vp9
+```
+
+It means you provided a value not in the supported list. Double-check your spelling and use `--list-formats` or `--list-codecs` to see valid options.
+
 ### Hardware Detection Issues
 ```bash
 # Check VAAPI functionality
@@ -328,6 +339,36 @@ cvrt --debug
 # Format code automatically
 ./dev-tools.sh format
 ```
+
+## Supported Formats and Codecs
+
+The script validates your choices for output format, video codec, and audio codec immediately when parsing arguments. If you provide an unsupported value (e.g., a typo like `h265` instead of `hevc`), the script will exit with a clear error message and list the supported options.
+
+**Supported Output Formats:**
+- mkv
+- mp4
+- mov
+- webm
+
+**Supported Video Codecs:**
+- hevc (H.265)
+- h264 (H.264)
+- av1
+- vp9
+
+**Supported Audio Codecs:**
+- aac
+- ac3
+- opus
+- flac
+- mp3
+
+If you are unsure, you can always run:
+```bash
+cvrt --list-formats
+cvrt --list-codecs
+```
+to see the current supported values.
 
 ## Output Format
 

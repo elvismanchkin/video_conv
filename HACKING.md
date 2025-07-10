@@ -135,6 +135,94 @@ video_conv/
 
 ---
 
+## Configuration Overrides and Customization
+
+### User Configuration Overrides
+
+The script supports user customization through `config/custom.conf`. This file is automatically sourced after `defaults.conf`, allowing users to override various settings.
+
+#### Overridable Arrays and Variables
+
+The following arrays can be overridden in `custom.conf`:
+
+- `SUPPORTED_INPUT_EXTENSIONS` - Input file formats to process
+- `SUPPORTED_OUTPUT_FORMATS` - Output container formats
+- `SUPPORTED_VIDEO_CODECS` - Video codecs (order matters for auto-selection)
+- `SUPPORTED_AUDIO_CODECS` - Audio codecs
+- `CONTAINER_FORMATS` - Container format mappings
+
+#### Example custom.conf
+
+```bash
+#!/bin/bash
+# Override supported input extensions
+SUPPORTED_INPUT_EXTENSIONS=(
+    "mkv" "mp4" "avi" "mov" "webm" "flv" "ts" "m2ts" "3gp" "ogv"
+)
+
+# Override supported output formats
+SUPPORTED_OUTPUT_FORMATS=(
+    "mkv" "mp4" "mov" "webm" "avi"
+)
+
+# Change video codec preference order
+SUPPORTED_VIDEO_CODECS=(
+    "h264"   # Prefer H.264 over HEVC
+    "hevc"   # H.265
+    "av1"    # AV1
+    "vp9"    # VP9
+)
+
+# Add new container format mappings
+declare -A CONTAINER_FORMATS
+CONTAINER_FORMATS[mkv]="matroska"
+CONTAINER_FORMATS[mp4]="mp4"
+CONTAINER_FORMATS[mov]="mov"
+CONTAINER_FORMATS[webm]="webm"
+CONTAINER_FORMATS[avi]="avi"
+CONTAINER_FORMATS[3gp]="3gpp"
+```
+
+#### Environment Variable Overrides
+
+Many settings can also be overridden via environment variables:
+
+```bash
+export CVRT_QUALITY=20           # Lower CRF for higher quality
+export CVRT_STEREO_BITRATE="256k" # Higher audio bitrate
+export CVRT_MAX_BITRATE="100M"    # Higher max bitrate
+export CVRT_BUFFER_SIZE="200M"    # Larger buffer
+```
+
+#### Readonly vs Overridable Variables
+
+- **Readonly variables** (marked with `readonly`) cannot be overridden and are meant to be constant.
+- **Overridable arrays** are declared without `readonly` initially, sourced from `custom.conf` if present, then made readonly to prevent further modification.
+
+### Adding New Overridable Settings
+
+When adding new configuration options:
+
+1. **For truly constant values:** Use `readonly` immediately
+2. **For user-overridable values:** Declare without `readonly`, allow `custom.conf` override, then make readonly
+3. **For environment-overridable values:** Use the pattern `readonly VAR=${ENV_VAR:-default_value}`
+
+Example:
+```bash
+# Constant - never override
+readonly REQUIRED_TOOLS=("ffmpeg" "ffprobe")
+
+# User-overridable - can be changed in custom.conf
+SUPPORTED_FORMATS=("mkv" "mp4")
+# ... custom.conf is sourced here ...
+readonly -a SUPPORTED_FORMATS
+
+# Environment-overridable - can be set via env vars
+readonly QUALITY=${CVRT_QUALITY:-24}
+```
+
+---
+
 ## Testing Your Changes
 
 ### Local Development Workflow

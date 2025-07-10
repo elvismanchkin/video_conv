@@ -226,19 +226,74 @@ cvrt --subtitles burn --metadata strip /path/to/videos
 
 ## Configuration
 
-### Environment Variables
-Override default settings using environment variables:
+### Default Configuration
+
+The script uses `config/defaults.conf` for all default settings. This file contains:
+
+- Supported input/output formats and codecs
+- Quality and performance settings
+- Hardware detection thresholds
+- Default encoding parameters
+
+### Custom Configuration
+
+You can create a custom configuration file at `config/custom.conf` to override default settings:
 
 ```bash
-export CVRT_QUALITY=22          # Quality parameter (lower = higher quality)
-export CVRT_STEREO_BITRATE=256k # Audio bitrate for 5.1→stereo conversion
-export CVRT_LOG_LEVEL=DEBUG     # Logging level: DEBUG, INFO, WARN, ERROR
+# Copy the example file
+cp config/custom.conf.example config/custom.conf
+
+# Edit to your preferences
+nano config/custom.conf
 ```
 
-### Quality Settings
-- `20`: Very high quality, larger files
-- `24`: Balanced quality/size (default)
-- `28`: High compression, smaller files
+#### What You Can Override
+
+**Supported Formats and Codecs:**
+- `SUPPORTED_INPUT_EXTENSIONS` - Add/remove input file formats
+- `SUPPORTED_OUTPUT_FORMATS` - Add/remove output container formats  
+- `SUPPORTED_VIDEO_CODECS` - Change codec preference order
+- `SUPPORTED_AUDIO_CODECS` - Add/remove audio codecs
+- `CONTAINER_FORMATS` - Add new container format mappings
+
+**Example custom.conf:**
+```bash
+#!/bin/bash
+# Add support for 3GP and OGV files
+SUPPORTED_INPUT_EXTENSIONS=(
+    "mkv" "mp4" "avi" "mov" "webm" "flv" "ts" "m2ts" "3gp" "ogv"
+)
+
+# Prefer H.264 over HEVC for better compatibility
+SUPPORTED_VIDEO_CODECS=(
+    "h264"   # H.264 (better compatibility)
+    "hevc"   # H.265 (better compression)
+    "av1"    # AV1 (newer cards)
+    "vp9"    # VP9
+)
+
+# Add Vorbis audio codec support
+SUPPORTED_AUDIO_CODECS=(
+    "aac" "ac3" "opus" "flac" "mp3" "vorbis"
+)
+```
+
+#### Environment Variables
+
+Many settings can also be overridden via environment variables:
+
+```bash
+export CVRT_QUALITY=20           # Lower CRF for higher quality
+export CVRT_STEREO_BITRATE="256k" # Higher audio bitrate
+export CVRT_MAX_BITRATE="100M"    # Higher max bitrate
+export CVRT_BUFFER_SIZE="200M"    # Larger buffer
+```
+
+### Configuration Hierarchy
+
+1. **Hardcoded defaults** in `config/defaults.conf`
+2. **User overrides** in `config/custom.conf` (if present)
+3. **Environment variables** (highest priority)
 
 ### Advanced Configuration
 Edit `config/defaults.conf` to modify:

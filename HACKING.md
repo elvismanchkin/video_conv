@@ -93,6 +93,8 @@ video_conv/
 2. **Add a CLI option in `cvrt.sh`** (see below).
 3. **Document in README and `--list-filters`.**
 
+**Note:** Video filters are automatically integrated into the main encoding process. The `build_video_filters()` function constructs filter chains that are passed to ffmpeg commands in `lib/audio_processing.sh`. No additional integration code is needed.
+
 ---
 
 ## Adding New Hardware Detection/Support
@@ -102,6 +104,60 @@ video_conv/
    - Add new hardware flags/capabilities as needed.
 2. **Update encoder selection logic** if the new hardware supports special encoders.
 3. **Document in README.**
+
+---
+
+## Subtitle and Metadata Integration
+
+The script now properly integrates subtitle and metadata handling into the main encoding process:
+
+### Video Filters Integration
+
+- **`build_video_filters()`** constructs video filter chains based on CLI options
+- **`build_subtitle_filters()`** handles subtitle processing (burn, extract, none, copy)
+- **`build_metadata_args()`** handles metadata processing (strip, minimal, copy)
+- **`build_performance_args()`** adds performance optimization arguments
+
+### Integration Points
+
+All encoding functions in `lib/audio_processing.sh` now call these builder functions:
+
+```bash
+# Build video filters
+local -a video_filters
+if ! build_video_filters "$input_file" video_filters; then
+    log_warn "Failed to build video filters, proceeding without filters"
+fi
+
+# Build subtitle filters
+local -a subtitle_filters
+build_subtitle_filters "$input_file" subtitle_filters
+
+# Build metadata arguments
+local -a metadata_args
+build_metadata_args metadata_args
+
+# Build performance arguments
+local -a perf_args
+build_performance_args perf_args
+
+# Pass all arguments to ffmpeg
+ffmpeg "${ffmpeg_inputs[@]}" \
+       "${map_args[@]}" \
+       "${video_filters[@]}" \
+       "${subtitle_filters[@]}" \
+       "${metadata_args[@]}" \
+       "${perf_args[@]}" \
+       "${encoder_args[@]}" \
+       -c:a copy \
+       -y "$output_file"
+```
+
+### Filter Compatibility
+
+- **`validate_filter_compatibility()`** checks if filters are compatible with the selected encoder
+- Hardware encoders (NVENC, QSV, VAAPI) may have limited filter support
+- Software encoding supports all filters
 
 ---
 

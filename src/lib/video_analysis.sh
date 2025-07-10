@@ -17,12 +17,23 @@ analyze_video_file() {
     local video_info
     if ! video_info=$(ffprobe -v quiet -print_format json -show_streams -show_format "$file" 2>/dev/null); then
         log_error "Failed to probe video file: $file"
+        log_error "Possible causes:"
+        log_error "  - File is corrupted or not a valid video"
+        log_error "  - File format is not supported by ffmpeg"
+        log_error "  - Insufficient permissions to read the file"
+        log_error "  - ffmpeg/ffprobe installation is incomplete"
+        log_error ""
+        log_error "Try running: ffprobe -v error -show_entries stream=codec_type -of csv=p=0 \"$file\""
         return 1
     fi
 
     # Check for empty or invalid JSON
     if [[ -z "$video_info" ]] || ! echo "$video_info" | jq empty >/dev/null 2>&1; then
         log_error "Invalid or empty ffprobe output for: $file"
+        log_error "This usually indicates:"
+        log_error "  - File is not a valid video format"
+        log_error "  - File is corrupted"
+        log_error "  - ffmpeg build is missing required codecs"
         return 1
     fi
 
@@ -50,12 +61,30 @@ validate_video_file() {
     local file="$1"
     if [[ ! -f "$file" ]]; then
         log_error "File not found or not a regular file: $file"
+        log_error "Check that the file exists and you have read permissions."
         return 1
     fi
+    
+    # Check file size
+    if [[ ! -s "$file" ]]; then
+        log_error "File is empty: $file"
+        return 1
+    fi
+    
     if ! is_supported_format "$file"; then
         log_error "Unsupported file extension: $file"
+        log_error "Supported formats: ${SUPPORTED_INPUT_EXTENSIONS[*]}"
+        log_error "Note: The file extension must match the actual format."
         return 1
     fi
+    
+    # Check if file is readable
+    if [[ ! -r "$file" ]]; then
+        log_error "Cannot read file (insufficient permissions): $file"
+        log_error "Try: chmod +r \"$file\""
+        return 1
+    fi
+    
     return 0
 }
 

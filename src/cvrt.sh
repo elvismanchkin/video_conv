@@ -494,7 +494,8 @@ validate_parsed_arguments() {
         done
         if [[ "$valid_scale" == false ]]; then
             log_error "Invalid scale mode: $SCALE_MODE"
-            log_info "Supported scale modes: ${SUPPORTED_SCALE_MODES[*]}"
+            log_error "Supported scale modes: ${SUPPORTED_SCALE_MODES[*]}"
+            log_error "Use --list-formats to see all supported options"
             exit 1
         fi
     fi
@@ -510,7 +511,8 @@ validate_parsed_arguments() {
         done
         if [[ "$valid_preset" == false ]]; then
             log_error "Invalid encoding preset: $ENCODING_PRESET"
-            log_info "Supported presets: ${SUPPORTED_ENCODING_PRESETS[*]}"
+            log_error "Supported presets: ${SUPPORTED_ENCODING_PRESETS[*]}"
+            log_error "Note: Preset affects encoding speed vs quality"
             exit 1
         fi
     fi
@@ -526,7 +528,8 @@ validate_parsed_arguments() {
         done
         if [[ "$valid_subtitle" == false ]]; then
             log_error "Invalid subtitle mode: $SUBTITLE_MODE"
-            log_info "Supported subtitle modes: ${SUPPORTED_SUBTITLE_MODES[*]}"
+            log_error "Supported subtitle modes: ${SUPPORTED_SUBTITLE_MODES[*]}"
+            log_error "Use 'burn' to embed subtitles, 'copy' to preserve, 'none' to remove"
             exit 1
         fi
     fi
@@ -542,7 +545,8 @@ validate_parsed_arguments() {
         done
         if [[ "$valid_metadata" == false ]]; then
             log_error "Invalid metadata mode: $METADATA_MODE"
-            log_info "Supported metadata modes: ${SUPPORTED_METADATA_MODES[*]}"
+            log_error "Supported metadata modes: ${SUPPORTED_METADATA_MODES[*]}"
+            log_error "Use 'copy' to preserve, 'strip' to remove, 'minimal' for basic info"
             exit 1
         fi
     fi
@@ -621,10 +625,13 @@ validate_directory() {
     local dir="$1"
     if [[ ! -d "$dir" ]]; then
         log_error "Directory not found: $dir"
+        log_error "Check that the directory exists and the path is correct."
         return 1
     fi
     if ! cd "$dir" 2>/dev/null; then
         log_error "Cannot access directory: $dir"
+        log_error "Check that you have read and execute permissions."
+        log_error "Try: ls -la \"$dir\""
         return 1
     fi
     return 0
@@ -634,6 +641,14 @@ process_video_file() {
     local file="$1"
     local -A file_info
     log_info "Processing: $file"
+    
+    # Check disk space before processing
+    if ! check_disk_space "$(pwd)" 1000; then
+        log_error "Skipping $file due to insufficient disk space"
+        increment_stat failed
+        return 1
+    fi
+    
     local analysis_output
     if ! analysis_output=$(analyze_video_file "$file"); then
         log_error "Failed to analyze: $file"
@@ -674,9 +689,16 @@ process_video_file() {
         fi
     else
         increment_stat failed
-        log_error "    [FAILED] Encoding failed"
+        log_error "    [FAILED] Encoding failed for: $(basename "$file")"
+        log_error "    Possible causes:"
+        log_error "      - Insufficient disk space"
+        log_error "      - Encoder not compatible with input format"
+        log_error "      - Hardware acceleration issues"
+        log_error "      - Invalid filter combination"
         if [[ "$DEBUG_MODE" == true ]]; then
             log_debug "Check encoder settings and hardware compatibility"
+        else
+            log_error "    Run with --debug for detailed error information"
         fi
     fi
     return 0
@@ -764,11 +786,19 @@ main() {
     fi
     select_best_encoder "$FORCE_ENCODER" || {
         log_error "Failed to select encoder"
+        log_error "This usually means:"
+        log_error "  - No compatible hardware encoders found"
+        log_error "  - Required drivers are not installed"
+        log_error "  - Hardware is not supported"
+        log_error ""
+        log_error "Try running with --cpu to force software encoding"
         return 1
     }
     display_hardware_summary
     if [[ -z "$(get_selected_encoder)" ]]; then
         log_error "No valid encoder selected"
+        log_error "Available encoders: $(get_available_encoders)"
+        log_error "Try running with --cpu to force software encoding"
         return 1
     fi
     if [[ "$DEBUG_MODE" == true ]]; then

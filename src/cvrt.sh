@@ -482,6 +482,70 @@ validate_parsed_arguments() {
             exit 1
         fi
     fi
+
+    # Validate scale mode
+    if [[ -n "${SCALE_MODE:-}" ]]; then
+        local valid_scale=false
+        for scale in "${SUPPORTED_SCALE_MODES[@]}"; do
+            if [[ "$SCALE_MODE" == "$scale" ]]; then
+                valid_scale=true
+                break
+            fi
+        done
+        if [[ "$valid_scale" == false ]]; then
+            log_error "Invalid scale mode: $SCALE_MODE"
+            log_info "Supported scale modes: ${SUPPORTED_SCALE_MODES[*]}"
+            exit 1
+        fi
+    fi
+
+    # Validate encoding preset
+    if [[ -n "${ENCODING_PRESET:-}" ]]; then
+        local valid_preset=false
+        for preset in "${SUPPORTED_ENCODING_PRESETS[@]}"; do
+            if [[ "$ENCODING_PRESET" == "$preset" ]]; then
+                valid_preset=true
+                break
+            fi
+        done
+        if [[ "$valid_preset" == false ]]; then
+            log_error "Invalid encoding preset: $ENCODING_PRESET"
+            log_info "Supported presets: ${SUPPORTED_ENCODING_PRESETS[*]}"
+            exit 1
+        fi
+    fi
+
+    # Validate subtitle mode
+    if [[ -n "${SUBTITLE_MODE:-}" ]]; then
+        local valid_subtitle=false
+        for mode in "${SUPPORTED_SUBTITLE_MODES[@]}"; do
+            if [[ "$SUBTITLE_MODE" == "$mode" ]]; then
+                valid_subtitle=true
+                break
+            fi
+        done
+        if [[ "$valid_subtitle" == false ]]; then
+            log_error "Invalid subtitle mode: $SUBTITLE_MODE"
+            log_info "Supported subtitle modes: ${SUPPORTED_SUBTITLE_MODES[*]}"
+            exit 1
+        fi
+    fi
+
+    # Validate metadata mode
+    if [[ -n "${METADATA_MODE:-}" ]]; then
+        local valid_metadata=false
+        for mode in "${SUPPORTED_METADATA_MODES[@]}"; do
+            if [[ "$METADATA_MODE" == "$mode" ]]; then
+                valid_metadata=true
+                break
+            fi
+        done
+        if [[ "$valid_metadata" == false ]]; then
+            log_error "Invalid metadata mode: $METADATA_MODE"
+            log_info "Supported metadata modes: ${SUPPORTED_METADATA_MODES[*]}"
+            exit 1
+        fi
+    fi
 }
 
 show_usage() {
@@ -502,13 +566,13 @@ OPTIONS:
     --codec         Force video codec (e.g., hevc, h264, av1, vp9)
     --audio-codec   Force audio codec (e.g., aac, opus, flac, mp3)
     --quality       Set quality parameter (1-1000, default: 24)
-    --preset        Set encoding preset (encoder-specific, default: medium)
-    --scale         Set scaling mode (e.g., none, 1080p, 720p, 480p, 4k)
+    --preset        Set encoding preset (ultrafast|superfast|veryfast|faster|fast|medium|slow|slower|veryslow)
+    --scale         Set scaling mode (none|1080p|720p|480p|4k|custom)
     --deinterlace   Enable deinterlacing
     --denoise       Enable denoising
     --sharpen       Enable sharpening
-    --subtitles     Set subtitle mode (e.g., copy, burn, extract, none)
-    --metadata      Set metadata mode (e.g., copy, strip, minimal)
+    --subtitles     Set subtitle mode (copy|burn|extract|none)
+    --metadata      Set metadata mode (copy|strip|minimal)
     --threads       Set thread count (0 = auto-detect)
     --list-formats  List supported output formats
     --list-codecs   List supported video/audio codecs

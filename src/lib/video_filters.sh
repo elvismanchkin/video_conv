@@ -56,24 +56,24 @@ build_video_filters() {
 build_scale_filter() {
     local current_width="$1"
     local current_height="$2"
-    local -n scale_filter=$3
+    local -n output_filter=$3
 
     case "${SCALE_MODE:-}" in
         1080p|1920x1080)
-            scale_filter="scale=1920:1080:flags=lanczos"
+            output_filter="scale=1920:1080:flags=lanczos"
             ;;
         720p|1280x720)
-            scale_filter="scale=1280:720:flags=lanczos"
+            output_filter="scale=1280:720:flags=lanczos"
             ;;
         480p|854x480)
-            scale_filter="scale=854:480:flags=lanczos"
+            output_filter="scale=854:480:flags=lanczos"
             ;;
         4k|3840x2160)
-            scale_filter="scale=3840:2160:flags=lanczos"
+            output_filter="scale=3840:2160:flags=lanczos"
             ;;
         custom)
             if [[ -n "${CUSTOM_SCALE:-}" ]]; then
-                scale_filter="scale=${CUSTOM_SCALE}:flags=lanczos"
+                output_filter="scale=${CUSTOM_SCALE}:flags=lanczos"
             else
                 log_warn "Custom scale mode specified but no dimensions provided"
                 return 1

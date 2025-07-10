@@ -213,6 +213,33 @@ Consider using --cpu for software encoding if you need these filters.
 
 **Note:** The argument parsing system supports both `getopt` (preferred) and legacy parsing (fallback). Options are order-independent and automatically validated.
 
+**Supported CLI Option Values:**
+
+When adding new CLI options, ensure they follow these patterns:
+
+**Boolean Options (no value):**
+- `--deinterlace`, `--denoise`, `--sharpen`
+- Set variables to `true` when specified
+
+**Single-Value Options:**
+- `--format`, `--codec`, `--audio-codec`
+- Validate against predefined arrays
+- Use immediate validation during parsing
+
+**Numeric Options:**
+- `--quality` (1-1000), `--threads` (0-64)
+- Validate range and type
+
+**Enumeration Options:**
+- `--scale` (none, 1080p, 720p, 480p, 4k, custom)
+- `--subtitles` (copy, burn, extract, none)
+- `--metadata` (copy, strip, minimal)
+- Validate against predefined lists
+
+**Encoder Options:**
+- `--cpu`, `--gpu`, `--nvenc`, `--vaapi`, `--qsv`
+- Mutually exclusive, set `FORCE_ENCODER` variable
+
 ---
 
 ## Adding a New Config Key
@@ -221,6 +248,39 @@ Consider using --cpu for software encoding if you need these filters.
    - Add the new key and a comment.
 2. **Reference it in code** (e.g., in `cvrt.sh` or a module) as needed.
 3. **Document in README or CONFIG.md.**
+
+**Configuration Key Categories:**
+
+**User-Overridable Arrays (can be changed in custom.conf):**
+- `SUPPORTED_INPUT_EXTENSIONS` - Input file formats to process
+- `SUPPORTED_OUTPUT_FORMATS` - Output container formats
+- `SUPPORTED_VIDEO_CODECS` - Video codecs (order matters for auto-selection)
+- `SUPPORTED_AUDIO_CODECS` - Audio codecs
+- `CONTAINER_FORMATS` - Container format mappings (associative array)
+
+**Environment-Overridable Settings:**
+- `QUALITY_PARAM` - Video quality (CVRT_QUALITY env var)
+- `STEREO_BITRATE` - Audio bitrate (CVRT_STEREO_BITRATE env var)
+- `MAX_BITRATE` - Max video bitrate (CVRT_MAX_BITRATE env var)
+- `BUFFER_SIZE` - Encoding buffer (CVRT_BUFFER_SIZE env var)
+
+**Readonly Constants (never override):**
+- `REQUIRED_TOOLS` - Required system tools
+- `OPTIONAL_TOOLS` - Optional hardware detection tools
+- `MIN_RAM_DISK_GB` - Minimum RAM disk size
+- `RAM_DISK_PATH` - RAM disk location
+
+**Default Behavior Settings:**
+- `DEFAULT_*` variables - Control default CLI option values
+- `DEFAULT_SCALE_MODE`, `DEFAULT_DEINTERLACE`, etc.
+
+**Hardware Detection Thresholds:**
+- `HIGH_COMPLEXITY_THRESHOLD` - High complexity video threshold
+- `MEDIUM_COMPLEXITY_THRESHOLD` - Medium complexity video threshold
+
+**Encoder Configuration:**
+- `DEFAULT_PRESET`, `DEFAULT_TUNE`, `DEFAULT_PROFILE`, `DEFAULT_LEVEL`
+- Encoder scoring functions and capability detection
 
 ---
 
@@ -369,4 +429,4 @@ The project includes pre-commit hooks that automatically run `./ci-local.sh` bef
 
 ---
 
-Happy hacking! 🎬 
+Happy hacking! 🎬

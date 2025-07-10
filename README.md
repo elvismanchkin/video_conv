@@ -162,18 +162,41 @@ cvrt [OPTIONS] [DIRECTORY]
 - `--format`: Specify output format (**must be one of:** mkv, mp4, mov, webm)
 - `--codec`: Force video codec (**must be one of:** hevc, h264, av1, vp9)
 - `--audio-codec`: Force audio codec (**must be one of:** aac, ac3, opus, flac, mp3)
-- `--quality`: Set quality parameter (e.g., 100, 200, 300)
-- `--preset`: Set encoding preset (e.g., fast, medium, high)
-- `--scale`: Set scaling mode (e.g., 1080p, 720p, 480p)
-- `--deinterlace`: Enable deinterlacing
-- `--denoise`: Enable denoising
-- `--sharpen`: Enable sharpening
-- `--subtitles`: Set subtitle mode (e.g., srt, ass, none)
-- `--metadata`: Set metadata mode (e.g., copy, remove, add)
-- `--threads`: Set thread count
+- `--quality`: Set quality parameter (1-1000, default: 24)
+- `--preset`: Set encoding preset (encoder-specific, default: medium)
+- `--scale`: Set scaling mode (**must be one of:** none, 1080p, 720p, 480p, 4k, custom)
+- `--deinterlace`: Enable deinterlacing (default: disabled)
+- `--denoise`: Enable denoising (default: disabled)
+- `--sharpen`: Enable sharpening (default: disabled)
+- `--subtitles`: Set subtitle mode (**must be one of:** copy, burn, extract, none)
+- `--metadata`: Set metadata mode (**must be one of:** copy, strip, minimal)
+- `--threads`: Set thread count (0 = auto-detect, default: 0)
 - `--list-formats`: List supported output formats
 - `--list-codecs`: List supported video/audio codecs
 - `--help`, `-h`: Show usage information
+
+### Default Values
+
+**Output Settings:**
+- Default output format: `mkv`
+- Default video codec: `hevc` (H.265)
+- Default audio codec: `aac`
+- Default quality parameter: `24` (lower = higher quality)
+
+**Processing Options:**
+- Default scaling mode: `none` (no scaling)
+- Default deinterlacing: `disabled`
+- Default denoising: `disabled`
+- Default sharpening: `disabled`
+- Default subtitle mode: `copy` (preserve subtitles)
+- Default metadata mode: `copy` (preserve metadata)
+- Default thread count: `0` (auto-detect)
+
+**Performance Settings:**
+- Default stereo bitrate: `192k`
+- Default max bitrate: `50M`
+- Default buffer size: `100M`
+- Default encoding preset: `medium`
 
 ### Examples
 
@@ -217,6 +240,42 @@ cvrt --denoise --sharpen --quality 20 /path/to/videos
 **Handle subtitles and metadata:**
 ```bash
 cvrt --subtitles burn --metadata strip /path/to/videos
+```
+
+**Advanced scaling and processing:**
+```bash
+# Scale to 4K
+cvrt --scale 4k --quality 18 /path/to/videos
+
+# Scale to 720p with custom quality
+cvrt --scale 720p --quality 22 /path/to/videos
+
+# No scaling (default)
+cvrt --scale none /path/to/videos
+```
+
+**Subtitle processing options:**
+```bash
+cvrt --subtitles copy /path/to/videos    # Preserve subtitles (default)
+cvrt --subtitles burn /path/to/videos    # Burn subtitles into video
+cvrt --subtitles extract /path/to/videos # Extract subtitles to .srt files
+cvrt --subtitles none /path/to/videos    # Remove subtitles
+```
+
+**Metadata processing options:**
+```bash
+cvrt --metadata copy /path/to/videos     # Preserve all metadata (default)
+cvrt --metadata strip /path/to/videos    # Remove all metadata
+cvrt --metadata minimal /path/to/videos  # Keep only essential metadata
+```
+
+**Performance tuning:**
+```bash
+# Use specific thread count
+cvrt --threads 8 /path/to/videos
+
+# Auto-detect threads (default)
+cvrt --threads 0 /path/to/videos
 ```
 
 **Running from script directory (if not installed system-wide):**
@@ -269,6 +328,27 @@ nano ~/.config/video_conv/custom.conf
 - `SUPPORTED_AUDIO_CODECS` - Add/remove audio codecs
 - `CONTAINER_FORMATS` - Add new container format mappings
 
+**Quality and Performance Settings:**
+- `QUALITY_PARAM` - Video quality parameter (default: 24, lower = higher quality)
+- `STEREO_BITRATE` - Audio bitrate for stereo conversion (default: "192k")
+- `MAX_BITRATE` - Maximum video bitrate (default: "50M")
+- `BUFFER_SIZE` - Encoding buffer size (default: "100M")
+- `DEFAULT_THREADS` - Default thread count (default: 0 = auto-detect)
+
+**Processing Options:**
+- `DEFAULT_SCALE_MODE` - Default scaling mode (default: "none")
+- `DEFAULT_DEINTERLACE` - Default deinterlacing (default: false)
+- `DEFAULT_DENOISE` - Default denoising (default: false)
+- `DEFAULT_SHARPEN` - Default sharpening (default: false)
+- `DEFAULT_SUBTITLE_MODE` - Default subtitle handling (default: "copy")
+- `DEFAULT_METADATA_MODE` - Default metadata handling (default: "copy")
+
+**Hardware Detection Settings:**
+- `MIN_RAM_DISK_GB` - Minimum RAM disk size in GB (default: 1)
+- `RAM_DISK_PATH` - RAM disk path (default: "/dev/shm")
+- `HIGH_COMPLEXITY_THRESHOLD` - High complexity threshold in pixels (default: 8000000)
+- `MEDIUM_COMPLEXITY_THRESHOLD` - Medium complexity threshold in pixels (default: 2000000)
+
 **Example custom.conf:**
 ```bash
 #!/bin/bash
@@ -289,6 +369,17 @@ SUPPORTED_VIDEO_CODECS=(
 SUPPORTED_AUDIO_CODECS=(
     "aac" "ac3" "opus" "flac" "mp3" "vorbis"
 )
+
+# Override quality settings
+QUALITY_PARAM=20                    # Higher quality (lower number)
+STEREO_BITRATE="256k"              # Higher audio bitrate
+MAX_BITRATE="100M"                 # Higher max bitrate
+BUFFER_SIZE="200M"                 # Larger buffer
+
+# Enable processing by default
+DEFAULT_DEINTERLACE=true           # Enable deinterlacing by default
+DEFAULT_DENOISE=true               # Enable denoising by default
+DEFAULT_SCALE_MODE="1080p"         # Scale to 1080p by default
 ```
 
 #### Environment Variables
@@ -437,6 +528,94 @@ cvrt --list-formats
 cvrt --list-codecs
 ```
 to see the current supported values.
+
+## Supported Values Reference
+
+### CLI Options and Valid Values
+
+**Output Format (`--format`):**
+- `mkv` - Matroska container (default)
+- `mp4` - MP4 container
+- `mov` - QuickTime container
+- `webm` - WebM container
+
+**Video Codec (`--codec`):**
+- `hevc` - H.265/HEVC (default)
+- `h264` - H.264/AVC
+- `av1` - AV1 (newer cards)
+- `vp9` - VP9
+
+**Audio Codec (`--audio-codec`):**
+- `aac` - AAC (default)
+- `ac3` - AC3
+- `opus` - Opus
+- `flac` - FLAC
+- `mp3` - MP3
+
+**Quality (`--quality`):**
+- Range: `1-1000`
+- Default: `24`
+- Lower values = higher quality
+- Recommended: `18-28` for most content
+
+**Scaling (`--scale`):**
+- `none` - No scaling (default)
+- `1080p` - Scale to 1920x1080
+- `720p` - Scale to 1280x720
+- `480p` - Scale to 854x480
+- `4k` - Scale to 3840x2160
+- `custom` - Use custom dimensions (requires CUSTOM_SCALE environment variable)
+
+**Subtitle Mode (`--subtitles`):**
+- `copy` - Preserve subtitles (default)
+- `burn` - Burn subtitles into video
+- `extract` - Extract subtitles to .srt files
+- `none` - Remove subtitles
+
+**Metadata Mode (`--metadata`):**
+- `copy` - Preserve all metadata (default)
+- `strip` - Remove all metadata
+- `minimal` - Keep only essential metadata
+
+**Thread Count (`--threads`):**
+- `0` - Auto-detect (default)
+- `1-64` - Specific thread count
+
+### Configuration Keys and Default Values
+
+**Quality Settings:**
+- `QUALITY_PARAM`: `24` (video quality)
+- `STEREO_BITRATE`: `"192k"` (audio bitrate)
+- `MAX_BITRATE`: `"50M"` (max video bitrate)
+- `BUFFER_SIZE`: `"100M"` (encoding buffer)
+
+**Processing Defaults:**
+- `DEFAULT_SCALE_MODE`: `"none"`
+- `DEFAULT_DEINTERLACE`: `false`
+- `DEFAULT_DENOISE`: `false`
+- `DEFAULT_SHARPEN`: `false`
+- `DEFAULT_SUBTITLE_MODE`: `"copy"`
+- `DEFAULT_METADATA_MODE`: `"copy"`
+- `DEFAULT_THREADS`: `0`
+
+**Hardware Detection:**
+- `MIN_RAM_DISK_GB`: `1`
+- `RAM_DISK_PATH`: `"/dev/shm"`
+- `HIGH_COMPLEXITY_THRESHOLD`: `8000000` (pixels)
+- `MEDIUM_COMPLEXITY_THRESHOLD`: `2000000` (pixels)
+
+**Encoder Settings:**
+- `DEFAULT_PRESET`: `"medium"`
+- `DEFAULT_TUNE`: `"film"`
+- `DEFAULT_PROFILE`: `"main"`
+- `DEFAULT_LEVEL`: `"4.1"`
+
+**Subtitle Settings:**
+- `DEFAULT_SUBTITLE_LANGUAGE`: `"eng"`
+
+**Performance Settings:**
+- `DEFAULT_BUFFER_SIZE_MB`: `100`
+- `DEFAULT_MAX_MEMORY_GB`: `4`
 
 ## Output Format
 

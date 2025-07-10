@@ -498,18 +498,18 @@ OPTIONS:
     --nvenc         Force NVIDIA NVENC
     --vaapi         Force AMD/Intel VAAPI
     --qsv           Force Intel Quick Sync
-    --format        Specify output format (e.g., mp4, mkv, avi)
-    --codec         Force video codec (e.g., h264, hevc, av1)
-    --audio-codec   Force audio codec (e.g., aac, opus, flac)
-    --quality       Set quality parameter (e.g., 100, 200, 300)
-    --preset        Set encoding preset (e.g., fast, medium, high)
-    --scale         Set scaling mode (e.g., 1080p, 720p, 480p)
+    --format        Specify output format (e.g., mp4, mkv, mov, webm)
+    --codec         Force video codec (e.g., hevc, h264, av1, vp9)
+    --audio-codec   Force audio codec (e.g., aac, opus, flac, mp3)
+    --quality       Set quality parameter (1-1000, default: 24)
+    --preset        Set encoding preset (encoder-specific, default: medium)
+    --scale         Set scaling mode (e.g., none, 1080p, 720p, 480p, 4k)
     --deinterlace   Enable deinterlacing
     --denoise       Enable denoising
     --sharpen       Enable sharpening
-    --subtitles     Set subtitle mode (e.g., srt, ass, none)
-    --metadata      Set metadata mode (e.g., copy, remove, add)
-    --threads       Set thread count
+    --subtitles     Set subtitle mode (e.g., copy, burn, extract, none)
+    --metadata      Set metadata mode (e.g., copy, strip, minimal)
+    --threads       Set thread count (0 = auto-detect)
     --list-formats  List supported output formats
     --list-codecs   List supported video/audio codecs
     -h, --help      Show this help

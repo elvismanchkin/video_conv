@@ -237,29 +237,103 @@ get_optimal_thread_count() {
 
 # Validate filter compatibility with encoder
 # Args: encoder_name filter_chain
+# Returns: 0 if compatible, 1 if incompatible (will cause failure), 2 if suboptimal
 validate_filter_compatibility() {
     local encoder="$1"
     # shellcheck disable=SC2178
     local filter_chain="$2"
     # shellcheck disable=SC2128
+    local compatibility_issues=()
+    local fatal_issues=()
+    local suboptimal_issues=()
+
     # Check for hardware-specific filter limitations
     case "$encoder" in
         NVENC)
             # NVENC has limited filter support
+            # shellcheck disable=SC2128
             if [[ "$filter_chain" == *"yadif"* ]]; then
-                log_warn "Deinterlacing may not work optimally with NVENC"
+                suboptimal_issues+=("Deinterlacing (yadif) may not work optimally with NVENC")
+            fi
+            # shellcheck disable=SC2128
+            if [[ "$filter_chain" == *"nlmeans"* ]]; then
+                suboptimal_issues+=("Denoising (nlmeans) may not work optimally with NVENC")
+            fi
+            # shellcheck disable=SC2128
+            if [[ "$filter_chain" == *"unsharp"* ]]; then
+                suboptimal_issues+=("Sharpening (unsharp) may not work optimally with NVENC")
+            fi
+            # shellcheck disable=SC2128
+            if [[ "$filter_chain" == *"subtitles"* ]]; then
+                suboptimal_issues+=("Subtitle burning may not work optimally with NVENC")
             fi
             ;;
         QSV)
-            # QSV supports most filters
+            # QSV supports most filters but has some limitations
+            # shellcheck disable=SC2128
+            if [[ "$filter_chain" == *"nlmeans"* ]]; then
+                suboptimal_issues+=("Denoising (nlmeans) may not work optimally with QSV")
+            fi
+            # shellcheck disable=SC2128
+            if [[ "$filter_chain" == *"subtitles"* ]]; then
+                suboptimal_issues+=("Subtitle burning may not work optimally with QSV")
+            fi
             ;;
         VAAPI)
-            # VAAPI has good filter support
+            # VAAPI has good filter support but some limitations
+            # shellcheck disable=SC2128
+            if [[ "$filter_chain" == *"nlmeans"* ]]; then
+                suboptimal_issues+=("Denoising (nlmeans) may not work optimally with VAAPI")
+            fi
+            # shellcheck disable=SC2128
+            if [[ "$filter_chain" == *"subtitles"* ]]; then
+                suboptimal_issues+=("Subtitle burning may not work optimally with VAAPI")
+            fi
             ;;
         SOFTWARE)
             # Software encoding supports all filters
             ;;
+        *)
+            log_warn "Unknown encoder: $encoder, assuming full filter support"
+            ;;
     esac
+
+    # Check for known fatal combinations
+    # shellcheck disable=SC2128
+    if [[ "$encoder" == "NVENC" && "$filter_chain" == *"yadif"* && "$filter_chain" == *"nlmeans"* ]]; then
+        fatal_issues+=("NVENC + Deinterlacing + Denoising combination is known to fail")
+    fi
+
+    # Report issues
+    if [[ ${#fatal_issues[@]} -gt 0 ]]; then
+        echo
+        echo "❌ FATAL: Incompatible filter/encoder combination detected!"
+        echo "========================================================"
+        for issue in "${fatal_issues[@]}"; do
+            echo "  • $issue"
+        done
+        echo
+        echo "This combination will likely fail. Consider:"
+        echo "  • Using --cpu for software encoding"
+        echo "  • Removing problematic filters"
+        echo "  • Using a different encoder"
+        echo
+        return 1
+    fi
+
+    if [[ ${#suboptimal_issues[@]} -gt 0 ]]; then
+        echo
+        echo "⚠️  WARNING: Suboptimal filter/encoder combination detected"
+        echo "=========================================================="
+        for issue in "${suboptimal_issues[@]}"; do
+            echo "  • $issue"
+        done
+        echo
+        echo "These filters may not work as expected with $encoder."
+        echo "Consider using --cpu for software encoding if you need these filters."
+        echo
+        return 2
+    fi
 
     return 0
 }

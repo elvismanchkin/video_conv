@@ -166,7 +166,17 @@ encode_with_converted_audio() {
 
     # Validate filter compatibility
     if [[ ${#video_filters[@]} -gt 0 ]]; then
-        validate_filter_compatibility "$SELECTED_ENCODER" "${video_filters[*]}"
+        local compatibility_result
+        compatibility_result=$(validate_filter_compatibility "$SELECTED_ENCODER" "${video_filters[*]}")
+        case $? in
+            1)
+                log_error "Fatal filter/encoder incompatibility detected. Aborting."
+                return 1
+                ;;
+            2)
+                log_warn "Suboptimal filter/encoder combination detected, but proceeding..."
+                ;;
+        esac
     fi
 
     # Build final output path
@@ -259,7 +269,17 @@ process_video_only() {
 
     # Validate filter compatibility
     if [[ ${#video_filters[@]} -gt 0 ]]; then
-        validate_filter_compatibility "$SELECTED_ENCODER" "${video_filters[*]}"
+        local compatibility_result
+        compatibility_result=$(validate_filter_compatibility "$SELECTED_ENCODER" "${video_filters[*]}")
+        case $? in
+            1)
+                log_error "Fatal filter/encoder incompatibility detected. Aborting."
+                return 1
+                ;;
+            2)
+                log_warn "Suboptimal filter/encoder combination detected, but proceeding..."
+                ;;
+        esac
     fi
 
     # Build final output path

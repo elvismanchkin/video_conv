@@ -159,6 +159,39 @@ ffmpeg "${ffmpeg_inputs[@]}" \
 - Hardware encoders (NVENC, QSV, VAAPI) may have limited filter support
 - Software encoding supports all filters
 
+**Enhanced Validation Features:**
+
+The function now provides three levels of feedback:
+
+1. **Compatible (return 0):** No issues detected
+2. **Suboptimal (return 2):** Filters may not work optimally, but encoding proceeds with warnings
+3. **Fatal (return 1):** Known problematic combination that will likely fail
+
+**User Feedback:**
+
+- **Visual warnings** with clear formatting and emojis
+- **Specific recommendations** for each compatibility issue
+- **Actionable advice** (e.g., "Use --cpu for software encoding")
+- **Fatal combinations** cause the script to abort with clear error messages
+
+**Example Output:**
+```
+⚠️  WARNING: Suboptimal filter/encoder combination detected
+==========================================================
+  • Deinterlacing (yadif) may not work optimally with NVENC
+  • Denoising (nlmeans) may not work optimally with NVENC
+
+These filters may not work as expected with NVENC.
+Consider using --cpu for software encoding if you need these filters.
+```
+
+**Known Limitations:**
+
+- **NVENC:** Limited support for complex filters (yadif, nlmeans, unsharp, subtitles)
+- **QSV:** Limited support for nlmeans and subtitle burning
+- **VAAPI:** Limited support for nlmeans and subtitle burning
+- **SOFTWARE:** Full support for all filters
+
 ---
 
 ## Adding a New CLI Option

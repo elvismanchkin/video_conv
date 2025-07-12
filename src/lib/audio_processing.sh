@@ -6,17 +6,17 @@
 process_with_encoder() {
     local input_file="$1"
     local output_file="$2"
-    local -n file_data=$3
-
+    local -A file_data
+    local analysis_output="$3"
+    local container_format="$4"
+    eval "$(echo $analysis_output | sed 's/\([^ ]*\)/file_data[\1/g;s/=/]=/g')"
     log_debug "Processing with encoder: $SELECTED_ENCODER"
-
-    # Determine if we need audio processing
-    if needs_audio_processing file_data; then
+    if needs_audio_processing "$analysis_output"; then
         log_info "    Converting 5.1 audio to stereo + encoding with $SELECTED_ENCODER"
-        process_with_audio_conversion "$input_file" "$output_file" file_data
+        process_with_audio_conversion "$input_file" "$output_file" "$analysis_output" "$container_format"
     else
         log_info "    Encoding with $SELECTED_ENCODER"
-        process_video_only "$input_file" "$output_file" file_data
+        process_video_only "$input_file" "$output_file" "$analysis_output" "$container_format"
     fi
 }
 
@@ -25,7 +25,10 @@ process_with_encoder() {
 process_with_audio_conversion() {
     local input_file="$1"
     local output_file="$2"
-    local -n audio_data=$3
+    local analysis_output="$3"
+    local container_format="$4"
+    local -A audio_data
+    eval "$(echo $analysis_output | sed 's/\([^ ]*\)/audio_data[\1/g;s/=/]=/g')"
 
     local temp_dir
     local use_ram_disk=false
@@ -50,13 +53,13 @@ process_with_audio_conversion() {
     trap cleanup_temp_dir EXIT
 
     # Convert 5.1 audio streams to stereo
-    if ! convert_surround_audio "$input_file" "$temp_dir" audio_data; then
+    if ! convert_surround_audio "$input_file" "$temp_dir" "$analysis_output"; then
         log_error "Audio conversion failed"
         return 1
     fi
 
     # Encode video with converted audio
-    if ! encode_with_converted_audio "$input_file" "$output_file" "$temp_dir" audio_data; then
+    if ! encode_with_converted_audio "$input_file" "$output_file" "$temp_dir" "$analysis_output" "$container_format"; then
         log_error "Video encoding with converted audio failed"
         return 1
     fi
@@ -71,7 +74,10 @@ process_with_audio_conversion() {
 convert_surround_audio() {
     local input_file="$1"
     local temp_dir="$2"
-    local -n conv_data=$3
+    local analysis_output="$3"
+    # If you need to use analysis data, eval it into an associative array as needed:
+    local -A conv_data
+    eval "$(echo $analysis_output | sed 's/\([^ ]*\)/conv_data[\1/g;s/=/]=/g')"
 
     log_debug "Converting 5.1 audio streams to stereo"
 
@@ -122,11 +128,14 @@ encode_with_converted_audio() {
     local input_file="$1"
     local output_file="$2"
     local temp_dir="$3"
-    local -n encode_data=$4
+    local analysis_output="$4"
+    local container_format="$5"
+    local -A encode_data
+    eval "$(echo $analysis_output | sed 's/\([^ ]*\)/encode_data[\1/g;s/=/]=/g')"
 
     # Build FFmpeg inputs array
     local -a ffmpeg_inputs=("-i" "$input_file")
-    local -a map_args=("-map" "0:v" "-map" "0:s?")  # Video and subtitles
+    local -a map_args=("-map" "0:v")  # Video (subtitles handled by subtitle filters)
     local audio_input_counter=1
 
     # Add converted audio files as inputs
@@ -146,6 +155,39 @@ encode_with_converted_audio() {
                          "${encode_data[complexity]}" \
                          encoder_args
 
+    # Build video filters
+    local -a video_filters
+    if ! build_video_filters "$input_file" video_filters; then
+        log_warn "Failed to build video filters, proceeding without filters"
+    fi
+
+    # Build subtitle filters
+    local -a subtitle_filters
+    read -ra subtitle_filters <<< "$(build_subtitle_filters "$input_file")"
+
+    # Build metadata arguments
+    local -a metadata_args
+    read -ra metadata_args <<< "$(build_metadata_args)"
+
+    # Build performance arguments
+    local -a perf_args
+    read -ra perf_args <<< "$(build_performance_args)"
+
+    # Validate filter compatibility
+    if [[ ${#video_filters[@]} -gt 0 ]]; then
+        local compatibility_result
+        compatibility_result=$(validate_filter_compatibility "$SELECTED_ENCODER" "${video_filters[*]}")
+        case $? in
+            1)
+                log_error "Fatal filter/encoder incompatibility detected. Aborting."
+                return 1
+                ;;
+            2)
+                log_warn "Suboptimal filter/encoder combination detected, but proceeding..."
+                ;;
+        esac
+    fi
+
     # Build final output path
     local final_output
     if [[ "$output_file" == "${input_file}" ]]; then
@@ -155,14 +197,20 @@ encode_with_converted_audio() {
     fi
 
     log_debug "Encoding with converted audio: ${#ffmpeg_inputs[@]} inputs"
+    log_debug "Video filters: ${video_filters[*]}"
+    log_debug "Subtitle filters: ${subtitle_filters[*]}"
+    log_debug "Metadata args: ${metadata_args[*]}"
 
     # Execute encoding
     if ffmpeg "${ffmpeg_inputs[@]}" \
               "${map_args[@]}" \
-              -map_metadata 0 \
+              "${video_filters[@]}" \
+              "${subtitle_filters[@]}" \
+              "${metadata_args[@]}" \
+              "${perf_args[@]}" \
+              -f "$container_format" \
               "${encoder_args[@]}" \
               -c:a copy \
-              -c:s copy \
               -y "$final_output" 2>/dev/null; then
 
         # Handle replacement if needed
@@ -179,7 +227,8 @@ encode_with_converted_audio() {
         # Try fallback encoder if available
         if [[ -n "$FALLBACK_ENCODER" && "$SELECTED_ENCODER" != "$FALLBACK_ENCODER" ]]; then
             log_warn "Retrying with fallback encoder: $FALLBACK_ENCODER"
-            return encode_with_fallback "$input_file" "$output_file" "$temp_dir" encode_data
+            encode_with_fallback "$input_file" "$output_file" "$temp_dir" "$analysis_output" "$container_format"
+            return $?
         fi
         return 1
     fi
@@ -190,7 +239,10 @@ encode_with_converted_audio() {
 process_video_only() {
     local input_file="$1"
     local output_file="$2"
-    local -n video_data=$3
+    local analysis_output="$3"
+    local container_format="$4"
+    local -A video_data
+    eval "$(echo $analysis_output | sed 's/\([^ ]*\)/video_data[\1/g;s/=/]=/g')"
 
     # Get streams to keep (non-5.1 audio + video + subtitles)
     local -a stream_indices
@@ -210,6 +262,39 @@ process_video_only() {
                          "${video_data[complexity]}" \
                          encoder_args
 
+    # Build video filters
+    local -a video_filters
+    if ! build_video_filters "$input_file" video_filters; then
+        log_warn "Failed to build video filters, proceeding without filters"
+    fi
+
+    # Build subtitle filters
+    local -a subtitle_filters
+    read -ra subtitle_filters <<< "$(build_subtitle_filters "$input_file")"
+
+    # Build metadata arguments
+    local -a metadata_args
+    read -ra metadata_args <<< "$(build_metadata_args)"
+
+    # Build performance arguments
+    local -a perf_args
+    read -ra perf_args <<< "$(build_performance_args)"
+
+    # Validate filter compatibility
+    if [[ ${#video_filters[@]} -gt 0 ]]; then
+        local compatibility_result
+        compatibility_result=$(validate_filter_compatibility "$SELECTED_ENCODER" "${video_filters[*]}")
+        case $? in
+            1)
+                log_error "Fatal filter/encoder incompatibility detected. Aborting."
+                return 1
+                ;;
+            2)
+                log_warn "Suboptimal filter/encoder combination detected, but proceeding..."
+                ;;
+        esac
+    fi
+
     # Build final output path
     local final_output
     if [[ "$output_file" == "${input_file}" ]]; then
@@ -219,13 +304,20 @@ process_video_only() {
     fi
 
     log_debug "Encoding video-only: ${#map_args[@]} streams"
+    log_debug "Video filters: ${video_filters[*]}"
+    log_debug "Subtitle filters: ${subtitle_filters[*]}"
+    log_debug "Metadata args: ${metadata_args[*]}"
 
     # Execute encoding
     if ffmpeg -i "$input_file" \
               "${map_args[@]}" \
+              "${video_filters[@]}" \
+              "${subtitle_filters[@]}" \
+              "${metadata_args[@]}" \
+              "${perf_args[@]}" \
+              -f "$container_format" \
               "${encoder_args[@]}" \
               -c:a copy \
-              -c:s copy \
               -y "$final_output" 2>/dev/null; then
 
         # Handle replacement if needed
@@ -242,7 +334,8 @@ process_video_only() {
         # Try fallback encoder if available
         if [[ -n "$FALLBACK_ENCODER" && "$SELECTED_ENCODER" != "$FALLBACK_ENCODER" ]]; then
             log_warn "Retrying with fallback encoder: $FALLBACK_ENCODER"
-            return encode_video_with_fallback "$input_file" "$output_file" video_data
+            encode_video_with_fallback "$input_file" "$output_file" "$analysis_output" "$container_format"
+            return $?
         fi
         return 1
     fi
@@ -254,7 +347,10 @@ encode_with_fallback() {
     local input_file="$1"
     local output_file="$2"
     local temp_dir="$3"
-    local -n fallback_data=$4
+    local analysis_output="$4"
+    local container_format="$5"
+    local -A fallback_data
+    eval "$(echo $analysis_output | sed 's/\([^ ]*\)/fallback_data[\1/g;s/=/]=/g')"
 
     log_debug "Using fallback encoder: $FALLBACK_ENCODER"
 
@@ -267,7 +363,7 @@ encode_with_fallback() {
 
     # Rebuild inputs and maps (same as primary attempt)
     local -a ffmpeg_inputs=("-i" "$input_file")
-    local -a map_args=("-map" "0:v" "-map" "0:s?")
+    local -a map_args=("-map" "0:v")  # Video (subtitles handled by subtitle filters)
     local audio_input_counter=1
 
     local converted_audio
@@ -278,6 +374,24 @@ encode_with_fallback() {
             ((audio_input_counter++))
         fi
     done
+
+    # Build video filters
+    local -a video_filters
+    if ! build_video_filters "$input_file" video_filters; then
+        log_warn "Failed to build video filters, proceeding without filters"
+    fi
+
+    # Build subtitle filters
+    local -a subtitle_filters
+    read -ra subtitle_filters <<< "$(build_subtitle_filters "$input_file")"
+
+    # Build metadata arguments
+    local -a metadata_args
+    read -ra metadata_args <<< "$(build_metadata_args)"
+
+    # Build performance arguments
+    local -a perf_args
+    read -ra perf_args <<< "$(build_performance_args)"
 
     # Build final output path
     local final_output
@@ -290,10 +404,13 @@ encode_with_fallback() {
     # Execute fallback encoding
     if ffmpeg "${ffmpeg_inputs[@]}" \
               "${map_args[@]}" \
-              -map_metadata 0 \
+              "${video_filters[@]}" \
+              "${subtitle_filters[@]}" \
+              "${metadata_args[@]}" \
+              "${perf_args[@]}" \
+              -f "$container_format" \
               "${fallback_args[@]}" \
               -c:a copy \
-              -c:s copy \
               -y "$final_output" 2>/dev/null; then
 
         if [[ "$final_output" != "$output_file" ]]; then
@@ -312,7 +429,10 @@ encode_with_fallback() {
 encode_video_with_fallback() {
     local input_file="$1"
     local output_file="$2"
-    local -n fallback_video_data=$3
+    local analysis_output="$3"
+    local container_format="$4"
+    local -A fallback_video_data
+    eval "$(echo $analysis_output | sed 's/\([^ ]*\)/fallback_video_data[\1/g;s/=/]=/g')"
 
     log_debug "Using fallback encoder for video-only: $FALLBACK_ENCODER"
 
@@ -334,6 +454,24 @@ encode_video_with_fallback() {
                          "${fallback_video_data[complexity]}" \
                          fallback_args
 
+    # Build video filters
+    local -a video_filters
+    if ! build_video_filters "$input_file" video_filters; then
+        log_warn "Failed to build video filters, proceeding without filters"
+    fi
+
+    # Build subtitle filters
+    local -a subtitle_filters
+    read -ra subtitle_filters <<< "$(build_subtitle_filters "$input_file")"
+
+    # Build metadata arguments
+    local -a metadata_args
+    read -ra metadata_args <<< "$(build_metadata_args)"
+
+    # Build performance arguments
+    local -a perf_args
+    read -ra perf_args <<< "$(build_performance_args)"
+
     # Build final output path
     local final_output
     if [[ "$output_file" == "${input_file}" ]]; then
@@ -345,9 +483,13 @@ encode_video_with_fallback() {
     # Execute fallback encoding
     if ffmpeg -i "$input_file" \
               "${map_args[@]}" \
+              "${video_filters[@]}" \
+              "${subtitle_filters[@]}" \
+              "${metadata_args[@]}" \
+              "${perf_args[@]}" \
+              -f "$container_format" \
               "${fallback_args[@]}" \
               -c:a copy \
-              -c:s copy \
               -y "$final_output" 2>/dev/null; then
 
         if [[ "$final_output" != "$output_file" ]]; then

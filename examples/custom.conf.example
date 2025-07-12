@@ -1,0 +1,77 @@
+#!/bin/bash
+# Example custom configuration file for GPU Video Converter
+# Copy this file to config/custom.conf and modify as needed
+
+# Override supported input extensions (add or remove formats)
+SUPPORTED_INPUT_EXTENSIONS=(
+    "mkv"
+    "mp4"
+    "avi"
+    "mov"
+    "m4v"
+    "wmv"
+    "flv"
+    "webm"
+    "ts"
+    "mts"
+    "m2ts"
+    "3gp"    # Add support for 3GP files
+    "ogv"    # Add support for Ogg Video files
+)
+
+# Override supported output formats (add or remove formats)
+SUPPORTED_OUTPUT_FORMATS=(
+    "mkv"
+    "mp4"
+    "mov"
+    "webm"
+    "avi"    # Add AVI as output format
+)
+
+# Override supported video codecs (change order or add/remove codecs)
+SUPPORTED_VIDEO_CODECS=(
+    "h264"   # Prefer H.264 over HEVC
+    "hevc"   # H.265
+    "av1"    # AV1 (newer cards)
+    "vp9"    # VP9
+)
+
+# Override supported audio codecs (add or remove codecs)
+SUPPORTED_AUDIO_CODECS=(
+    "aac"
+    "ac3"
+    "opus"
+    "flac"
+    "mp3"
+    "vorbis" # Add Vorbis support
+)
+
+# Override container format mappings (add new formats)
+declare -A CONTAINER_FORMATS
+CONTAINER_FORMATS[mkv]="matroska"
+CONTAINER_FORMATS[mp4]="mp4"
+CONTAINER_FORMATS[mov]="mov"
+CONTAINER_FORMATS[webm]="webm"
+CONTAINER_FORMATS[avi]="avi"      # Add AVI mapping
+CONTAINER_FORMATS[3gp]="3gpp"     # Add 3GP mapping
+CONTAINER_FORMATS[ogv]="ogg"      # Add OGV mapping
+
+# Override quality settings
+# Note: These are already environment-variable overridable, but you can set defaults here
+# QUALITY_PARAM=20        # Lower CRF for higher quality
+# STEREO_BITRATE="256k"   # Higher audio bitrate
+# MAX_BITRATE="100M"      # Higher max bitrate
+
+# Override performance settings
+# DEFAULT_THREADS=8       # Force specific thread count
+# DEFAULT_BUFFER_SIZE_MB=200  # Larger buffer
+# DEFAULT_MAX_MEMORY_GB=8     # More memory for encoding
+
+# Override filter defaults
+# DEFAULT_SCALE_MODE="1080p"  # Default to 1080p scaling
+# DEFAULT_DEINTERLACE=true    # Default to deinterlacing
+# DEFAULT_DENOISE=true        # Default to denoising
+
+# Override subtitle and metadata defaults
+# DEFAULT_SUBTITLE_MODE="burn"    # Default to burning subtitles
+# DEFAULT_METADATA_MODE="strip"   # Default to stripping metadata 

@@ -51,7 +51,7 @@ video_conv/
 │   ├── ci-local.sh     # Local CI checks
 │   └── dev-tools.sh    # Development utilities
 ├── docs/               # Documentation
-│   ├── README.md       # This file
+│   ├── USER_GUIDE.md   # This file
 │   └── HACKING.md      # Developer guide
 └── examples/           # Example configurations
     └── custom.conf.example
@@ -653,7 +653,7 @@ The script provides cleaner, more informative output:
 
 ### Local CI Setup
 
-The project includes a comprehensive local CI system that mirrors GitHub Actions:
+The project includes a comprehensive local CI system:
 
 ```bash
 # Run all local CI checks
@@ -759,7 +759,7 @@ analyze_video_file "test.mkv" info
 
 ### Continuous Integration
 
-The project includes GitHub Actions workflows for automated testing:
+The project includes local CI tools for automated testing:
 - **ShellCheck**: Static analysis of all shell scripts
 - **Syntax Check**: Bash syntax validation
 - **Basic Tests**: Functionality verification
@@ -769,7 +769,6 @@ The project includes GitHub Actions workflows for automated testing:
 
 ```
 video_conv/
-├── .github/workflows/     # CI/CD pipelines
 ├── .shellcheckrc         # ShellCheck configuration
 ├── .git/hooks/pre-commit # Pre-commit hook
 ├── ci-local.sh          # Local CI script

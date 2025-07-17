@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# Constants for readability
+readonly KB_TO_MB_DIVISOR=1024
+readonly DEFAULT_MIN_RAM_DISK_MB=100
+readonly DEFAULT_MIN_DISK_SPACE_MB=1000
+
 LOG_LEVEL=${CVRT_LOG_LEVEL:-INFO}
 
 get_log_level_value() {
@@ -120,7 +125,7 @@ get_cpu_cores() {
 # Check available disk space
 check_disk_space() {
     local path="$1"
-    local required_mb="${2:-1000}"  # Default 1GB
+    local required_mb="${2:-$DEFAULT_MIN_DISK_SPACE_MB}"
 
     if ! command_exists df; then
         log_warn "Cannot check disk space (df command not available)"
@@ -188,17 +193,21 @@ suggest_error_recovery() {
     log_error "  - Use --help for command line options"
 }
 
-# Function to check if we can use a RAM disk for temporary processing
-# This should be added to src/lib/utils.sh or the file where it's needed
-
-can_use_ram_disk() {
-    local min_size_mb=${1:-100}  # Default minimum size 100MB
-    local tmpfs_path="/dev/shm"
-    
-    # Validate that min_size_mb is numeric
-    if [[ ! "$min_size_mb" =~ ^[0-9]+$ ]]; then
-        min_size_mb=100
+# Helper function to validate and normalize numeric input
+validate_numeric_mb() {
+    local value="${1:-$DEFAULT_MIN_RAM_DISK_MB}"
+    if [[ "$value" =~ ^[0-9]+$ ]]; then
+        echo "$value"
+    else
+        echo "$DEFAULT_MIN_RAM_DISK_MB"
     fi
+}
+
+# Function to check if we can use a RAM disk for temporary processing
+can_use_ram_disk() {
+    local min_size_mb
+    min_size_mb=$(validate_numeric_mb "$1")
+    local tmpfs_path="/dev/shm"
 
     # Check if /dev/shm exists and is mounted
     if [[ ! -d "$tmpfs_path" ]]; then
@@ -220,7 +229,7 @@ can_use_ram_disk() {
 
     # Convert KB to MB and compare
     local available_mb
-    if ! available_mb=$((available_kb / 1024)) 2>/dev/null; then
+    if ! available_mb=$((available_kb / KB_TO_MB_DIVISOR)) 2>/dev/null; then
         return 1
     fi
 
@@ -233,13 +242,8 @@ can_use_ram_disk() {
 
 # Alternative function that also checks for sufficient memory
 can_use_ram_disk_with_memory_check() {
-    local min_size_mb=${1:-100}
-    local tmpfs_path="/dev/shm"
-    
-    # Validate that min_size_mb is numeric
-    if [[ ! "$min_size_mb" =~ ^[0-9]+$ ]]; then
-        min_size_mb=100
-    fi
+    local min_size_mb
+    min_size_mb=$(validate_numeric_mb "$1")
 
     # First check basic tmpfs availability
     if ! can_use_ram_disk "$min_size_mb"; then

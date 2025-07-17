@@ -38,13 +38,23 @@ SHARPEN="${DEFAULT_SHARPEN}"
 SUBTITLE_MODE="${DEFAULT_SUBTITLE_MODE}"
 METADATA_MODE="${DEFAULT_METADATA_MODE}"
 THREAD_COUNT="${DEFAULT_THREADS}"
+
+# Statistics tracking variables
+STATS_SUCCESS=0
+STATS_FAILED=0
+STATS_SKIPPED=0
+
+# Get the current value of a statistic
 get_stat() {
     case "$1" in
         success) echo "${STATS_SUCCESS:-0}" ;;
         failed) echo "${STATS_FAILED:-0}" ;;
         skipped) echo "${STATS_SKIPPED:-0}" ;;
+        *) echo "0" ;;
     esac
 }
+
+# Set a statistic to a specific value
 set_stat() {
     case "$1" in
         success) STATS_SUCCESS="$2" ;;
@@ -52,14 +62,14 @@ set_stat() {
         skipped) STATS_SKIPPED="$2" ;;
     esac
 }
+
+# Increment a statistic by 1
 increment_stat() {
-    local current
-    current=$(get_stat "$1")
-    set_stat "$1" $((current + 1))
+    local stat_type="$1"
+    local current_value
+    current_value=$(get_stat "$stat_type")
+    set_stat "$stat_type" $((current_value + 1))
 }
-STATS_SUCCESS=0
-STATS_FAILED=0
-STATS_SKIPPED=0
 
 parse_arguments() {
     local short_opts="rdh"

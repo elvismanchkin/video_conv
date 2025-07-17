@@ -187,3 +187,73 @@ suggest_error_recovery() {
 
     log_error "  - Use --help for command line options"
 }
+
+# Function to check if we can use a RAM disk for temporary processing
+# This should be added to src/lib/utils.sh or the file where it's needed
+
+can_use_ram_disk() {
+    local min_size_mb=${1:-100}  # Default minimum size 100MB
+    local tmpfs_path="/dev/shm"
+
+    # Check if /dev/shm exists and is mounted
+    if [[ ! -d "$tmpfs_path" ]]; then
+        return 1
+    fi
+
+    # Check if it's actually a tmpfs mount
+    if ! mount | grep -q "$tmpfs_path.*tmpfs"; then
+        return 1
+    fi
+
+    # Check available space using df
+    local available_kb
+    available_kb=$(df "$tmpfs_path" 2>/dev/null | awk 'NR==2 {print $4}')
+
+    if [[ -z "$available_kb" || ! "$available_kb" =~ ^[0-9]+$ ]]; then
+        return 1
+    fi
+
+    # Convert KB to MB and compare
+    local available_mb=$((available_kb / 1024))
+
+    if [[ $available_mb -gt $min_size_mb ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Alternative function that also checks for sufficient memory
+can_use_ram_disk_with_memory_check() {
+    local min_size_mb=${1:-100}
+    local tmpfs_path="/dev/shm"
+
+    # First check basic tmpfs availability
+    if ! can_use_ram_disk "$min_size_mb"; then
+        return 1
+    fi
+
+    # Check system memory (optional additional safety check)
+    if command -v free >/dev/null 2>&1; then
+        local available_mem_mb
+        available_mem_mb=$(free -m | awk '/^Mem:/ {print $7}')
+
+        # Only use ramdisk if we have plenty of free memory
+        if [[ -n "$available_mem_mb" && $available_mem_mb -gt $((min_size_mb * 2)) ]]; then
+            return 0
+        else
+            return 1
+        fi
+    fi
+
+    # If free command not available, fall back to basic check
+    return 0
+}
+
+# Usage examples:
+# if can_use_ram_disk 200; then
+#     temp_dir="/dev/shm/video_conv_$$"
+#     mkdir -p "$temp_dir"
+# else
+#     temp_dir=$(mktemp -d)
+# fi

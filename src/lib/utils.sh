@@ -27,7 +27,7 @@ should_log() {
     current_level_num=$(get_log_level_value "$LOG_LEVEL")
     local msg_level_num
     msg_level_num=$(get_log_level_value "$msg_level")
-    [[ $msg_level_num -ge $current_level_num ]]
+    [[ "$msg_level_num" -ge "$current_level_num" ]]
 }
 
 log_debug() {
@@ -135,7 +135,7 @@ check_disk_space() {
         return 0
     fi
 
-    if [[ $available_mb -lt $required_mb ]]; then
+    if [[ "$available_mb" -lt "$required_mb" ]]; then
         log_error "Insufficient disk space: ${available_mb}MB available, ${required_mb}MB recommended"
         log_error "Free up space or use a different output directory"
         return 1
@@ -216,7 +216,7 @@ can_use_ram_disk() {
     # Convert KB to MB and compare
     local available_mb=$((available_kb / 1024))
 
-    if [[ $available_mb -gt $min_size_mb ]]; then
+    if [[ "$available_mb" -gt "$min_size_mb" ]]; then
         return 0
     else
         return 1
@@ -239,7 +239,7 @@ can_use_ram_disk_with_memory_check() {
         available_mem_mb=$(free -m | awk '/^Mem:/ {print $7}')
 
         # Only use ramdisk if we have plenty of free memory
-        if [[ -n "$available_mem_mb" && $available_mem_mb -gt $((min_size_mb * 2)) ]]; then
+        if [[ -n "$available_mem_mb" && "$available_mem_mb" -gt $((min_size_mb * 2)) ]]; then
             return 0
         else
             return 1

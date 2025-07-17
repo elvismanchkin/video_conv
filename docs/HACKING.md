@@ -45,7 +45,7 @@ video_conv/
 │   ├── ci-local.sh         # Local CI checks
 │   └── dev-tools.sh        # Development tools
 ├── docs/                    # Documentation
-│   ├── README.md           # User documentation
+│   ├── USER_GUIDE.md       # User documentation
 │   └── HACKING.md          # This file
 └── examples/                # Example configurations
     └── custom.conf.example
@@ -259,7 +259,7 @@ When adding new CLI options, ensure they follow these patterns:
 1. **Edit `config/defaults.conf`:**
    - Add the new key and a comment.
 2. **Reference it in code** (e.g., in `cvrt.sh` or a module) as needed.
-3. **Document in README or CONFIG.md.**
+3. **Document in USER_GUIDE.md or custom.conf.example.**
 
 **Configuration Key Categories:**
 

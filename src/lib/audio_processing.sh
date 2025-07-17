@@ -33,8 +33,8 @@ process_with_audio_conversion() {
     local temp_dir
     local use_ram_disk=false
 
-    # Determine if we can use RAM disk
-    if can_use_ram_disk "$input_file"; then
+    # Determine if we can use RAM disk (need minimum 100MB)
+    if can_use_ram_disk 100; then
         use_ram_disk=true
         temp_dir=$(mktemp -d -p "$RAM_DISK_PATH")
         log_debug "Using RAM disk for temporary files: $temp_dir"

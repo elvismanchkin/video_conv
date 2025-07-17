@@ -194,6 +194,11 @@ suggest_error_recovery() {
 can_use_ram_disk() {
     local min_size_mb=${1:-100}  # Default minimum size 100MB
     local tmpfs_path="/dev/shm"
+    
+    # Validate that min_size_mb is numeric
+    if [[ ! "$min_size_mb" =~ ^[0-9]+$ ]]; then
+        min_size_mb=100
+    fi
 
     # Check if /dev/shm exists and is mounted
     if [[ ! -d "$tmpfs_path" ]]; then
@@ -214,7 +219,10 @@ can_use_ram_disk() {
     fi
 
     # Convert KB to MB and compare
-    local available_mb=$((available_kb / 1024))
+    local available_mb
+    if ! available_mb=$((available_kb / 1024)) 2>/dev/null; then
+        return 1
+    fi
 
     if [[ "$available_mb" -gt "$min_size_mb" ]]; then
         return 0
@@ -227,6 +235,11 @@ can_use_ram_disk() {
 can_use_ram_disk_with_memory_check() {
     local min_size_mb=${1:-100}
     local tmpfs_path="/dev/shm"
+    
+    # Validate that min_size_mb is numeric
+    if [[ ! "$min_size_mb" =~ ^[0-9]+$ ]]; then
+        min_size_mb=100
+    fi
 
     # First check basic tmpfs availability
     if ! can_use_ram_disk "$min_size_mb"; then
